@@ -1,0 +1,1399 @@
+--[[
+    SimpleSpy v4.2 - Input Fix Edition
+    Hooks don't block game buttons anymore
+]]
+
+if _G.SimpleSpyExecuted and type(_G.SimpleSpyShutdown) == "function" then
+    pcall(_G.SimpleSpyShutdown)
+end
+
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+-- // SAVE ORIGINALS IMMEDIATELY
+local gmt = getrawmetatable(game)
+local originalNamecall = rawget(gmt, "__namecall")
+local original = originalNamecall
+
+local _re = Instance.new("RemoteEvent")
+local _rf = Instance.new("RemoteFunction")
+local origFire, origInvoke
+
+pcall(function()
+    origFire = hookfunction(_re.FireServer, function(...) end)
+    hookfunction(_re.FireServer, origFire)
+end)
+
+pcall(function()
+    origInvoke = hookfunction(_rf.InvokeServer, function(...) end)
+    hookfunction(_rf.InvokeServer, origInvoke)
+end)
+
+-- // SCREEN GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SimpleSpy42"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 999
+
+-- KEY FIX: This stops the GUI from eating game inputs
+ScreenGui.IgnoreGuiInset = false
+
+-- // PILL BUTTON
+local Pill = Instance.new("Frame")
+Pill.Name = "Pill"
+Pill.Parent = ScreenGui
+Pill.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+Pill.BorderSizePixel = 0
+Pill.Position = UDim2.new(0.5, -45, 0, 12)
+Pill.Size = UDim2.new(0, 90, 0, 26)
+Pill.ZIndex = 200
+Instance.new("UICorner", Pill).CornerRadius = UDim.new(1, 0)
+
+local PillStroke = Instance.new("UIStroke")
+PillStroke.Parent = Pill
+PillStroke.Color = Color3.fromRGB(99, 86, 245)
+PillStroke.Thickness = 1.5
+
+local PillDot = Instance.new("Frame")
+PillDot.Parent = Pill
+PillDot.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
+PillDot.BorderSizePixel = 0
+PillDot.Position = UDim2.new(0, 8, 0.5, -4)
+PillDot.Size = UDim2.new(0, 8, 0, 8)
+PillDot.ZIndex = 201
+Instance.new("UICorner", PillDot).CornerRadius = UDim.new(1, 0)
+
+local PillText = Instance.new("TextLabel")
+PillText.Parent = Pill
+PillText.BackgroundTransparency = 1
+PillText.Position = UDim2.new(0, 20, 0, 0)
+PillText.Size = UDim2.new(1, -24, 1, 0)
+PillText.Font = Enum.Font.GothamBold
+PillText.Text = "SimpleSpy"
+PillText.TextColor3 = Color3.fromRGB(210, 210, 220)
+PillText.TextSize = 10
+PillText.ZIndex = 201
+PillText.TextXAlignment = Enum.TextXAlignment.Left
+
+-- KEY FIX: Modal = false so it doesnt steal input
+local PillBtn = Instance.new("TextButton")
+PillBtn.Parent = Pill
+PillBtn.BackgroundTransparency = 1
+PillBtn.Size = UDim2.new(1, 0, 1, 0)
+PillBtn.Text = ""
+PillBtn.ZIndex = 202
+PillBtn.Modal = false
+
+-- // MAIN WINDOW
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Parent = ScreenGui
+Main.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
+Main.BorderSizePixel = 0
+Main.Position = UDim2.new(0.5, -175, 0, 50)
+Main.Size = UDim2.new(0, 350, 0, 220)
+Main.ClipsDescendants = true
+Main.Visible = false
+-- KEY FIX: Active false means it wont block clicks behind it
+Main.Active = false
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Parent = Main
+MainStroke.Color = Color3.fromRGB(40, 40, 55)
+MainStroke.Thickness = 1
+
+-- // TOP BAR
+-- KEY FIX: TopBar Active = true only for dragging
+local TopBar = Instance.new("Frame")
+TopBar.Parent = Main
+TopBar.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+TopBar.BorderSizePixel = 0
+TopBar.Size = UDim2.new(1, 0, 0, 30)
+TopBar.Active = true
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 12)
+
+local TopFix = Instance.new("Frame")
+TopFix.Parent = TopBar
+TopFix.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+TopFix.BorderSizePixel = 0
+TopFix.Position = UDim2.new(0, 0, 0.5, 0)
+TopFix.Size = UDim2.new(1, 0, 0.5, 0)
+
+-- Mac dots
+local function makeDot(color, x)
+    local f = Instance.new("Frame")
+    f.Parent = TopBar
+    f.BackgroundColor3 = color
+    f.BorderSizePixel = 0
+    f.Position = UDim2.new(0, x, 0.5, -4)
+    f.Size = UDim2.new(0, 8, 0, 8)
+    f.ZIndex = 2
+    Instance.new("UICorner", f).CornerRadius = UDim.new(1, 0)
+    local b = Instance.new("TextButton")
+    b.Parent = f
+    b.BackgroundTransparency = 1
+    b.Size = UDim2.new(3, 0, 3, 0)
+    b.Position = UDim2.new(-1, 0, -1, 0)
+    b.Text = ""
+    b.ZIndex = 5
+    -- KEY FIX
+    b.Modal = false
+    return f, b
+end
+
+local _, RedBtn = makeDot(Color3.fromRGB(255, 95, 86), 8)
+local _, YellowBtn = makeDot(Color3.fromRGB(255, 189, 46), 22)
+local _, GreenBtn = makeDot(Color3.fromRGB(39, 201, 63), 36)
+
+local TitleLbl = Instance.new("TextLabel")
+TitleLbl.Parent = TopBar
+TitleLbl.BackgroundTransparency = 1
+TitleLbl.Position = UDim2.new(0, 50, 0, 0)
+TitleLbl.Size = UDim2.new(0, 160, 1, 0)
+TitleLbl.Font = Enum.Font.GothamBold
+TitleLbl.Text = "SimpleSpy • ON"
+TitleLbl.TextColor3 = Color3.fromRGB(200, 200, 210)
+TitleLbl.TextSize = 11
+TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+TitleLbl.ZIndex = 2
+
+local StatDot = Instance.new("Frame")
+StatDot.Parent = TopBar
+StatDot.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
+StatDot.BorderSizePixel = 0
+StatDot.Position = UDim2.new(1, -14, 0.5, -3)
+StatDot.Size = UDim2.new(0, 6, 0, 6)
+StatDot.ZIndex = 2
+Instance.new("UICorner", StatDot).CornerRadius = UDim.new(1, 0)
+
+-- // TAB ROW
+local TabRow = Instance.new("Frame")
+TabRow.Parent = Main
+TabRow.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+TabRow.BorderSizePixel = 0
+TabRow.Position = UDim2.new(0, 0, 0, 30)
+TabRow.Size = UDim2.new(1, 0, 0, 22)
+TabRow.Active = true
+
+local TabFix = Instance.new("Frame")
+TabFix.Parent = TabRow
+TabFix.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+TabFix.BorderSizePixel = 0
+TabFix.Size = UDim2.new(1, 0, 0.5, 0)
+
+local function makeTab(text, x, active)
+    local t = Instance.new("TextButton")
+    t.Parent = TabRow
+    t.BackgroundTransparency = 1
+    t.Position = UDim2.new(0, x, 0, 0)
+    t.Size = UDim2.new(0, 78, 1, 0)
+    t.Font = Enum.Font.GothamSemibold
+    t.Text = text
+    t.TextColor3 = active
+        and Color3.fromRGB(255, 255, 255)
+        or Color3.fromRGB(85, 85, 100)
+    t.TextSize = 10
+    t.ZIndex = 2
+    t.Modal = false
+    return t
+end
+
+local LogTab = makeTab("Logs", 4, true)
+local CodeTab = makeTab("Code", 82, false)
+local SetTab = makeTab("Settings", 160, false)
+
+local TabLine = Instance.new("Frame")
+TabLine.Parent = TabRow
+TabLine.BackgroundColor3 = Color3.fromRGB(99, 86, 245)
+TabLine.BorderSizePixel = 0
+TabLine.Position = UDim2.new(0, 4, 1, -2)
+TabLine.Size = UDim2.new(0, 78, 0, 2)
+TabLine.ZIndex = 3
+Instance.new("UICorner", TabLine).CornerRadius = UDim.new(1, 0)
+
+local Div = Instance.new("Frame")
+Div.Parent = Main
+Div.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+Div.BorderSizePixel = 0
+Div.Position = UDim2.new(0, 0, 0, 52)
+Div.Size = UDim2.new(1, 0, 0, 1)
+
+-- // CONTENT
+local Content = Instance.new("Frame")
+Content.Parent = Main
+Content.BackgroundTransparency = 1
+Content.Position = UDim2.new(0, 0, 0, 53)
+Content.Size = UDim2.new(1, 0, 1, -53)
+-- KEY FIX: Content not active so clicks pass through
+Content.Active = false
+
+-- ============================================================
+-- LOGS PANEL
+-- ============================================================
+local LogsPanel = Instance.new("Frame")
+LogsPanel.Parent = Content
+LogsPanel.BackgroundTransparency = 1
+LogsPanel.Size = UDim2.new(1, 0, 1, 0)
+LogsPanel.Visible = true
+LogsPanel.Active = false
+
+-- Left side
+local LeftSide = Instance.new("Frame")
+LeftSide.Parent = LogsPanel
+LeftSide.BackgroundTransparency = 1
+LeftSide.Position = UDim2.new(0, 4, 0, 4)
+LeftSide.Size = UDim2.new(0, 192, 1, -8)
+LeftSide.Active = false
+
+-- Search
+local SearchBg = Instance.new("Frame")
+SearchBg.Parent = LeftSide
+SearchBg.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+SearchBg.BorderSizePixel = 0
+SearchBg.Size = UDim2.new(1, 0, 0, 20)
+SearchBg.Active = true
+Instance.new("UICorner", SearchBg).CornerRadius = UDim.new(0, 5)
+
+local SearchInput = Instance.new("TextBox")
+SearchInput.Parent = SearchBg
+SearchInput.BackgroundTransparency = 1
+SearchInput.Position = UDim2.new(0, 6, 0, 0)
+SearchInput.Size = UDim2.new(1, -6, 1, 0)
+SearchInput.Font = Enum.Font.Gotham
+SearchInput.PlaceholderText = "Search..."
+SearchInput.PlaceholderColor3 = Color3.fromRGB(65, 65, 80)
+SearchInput.Text = ""
+SearchInput.TextColor3 = Color3.fromRGB(185, 185, 200)
+SearchInput.TextSize = 9
+SearchInput.TextXAlignment = Enum.TextXAlignment.Left
+SearchInput.ClearTextOnFocus = false
+
+-- Filter row
+local FilRow = Instance.new("Frame")
+FilRow.Parent = LeftSide
+FilRow.BackgroundTransparency = 1
+FilRow.Position = UDim2.new(0, 0, 0, 24)
+FilRow.Size = UDim2.new(1, 0, 0, 18)
+FilRow.Active = false
+
+local function makeFil(text, color, x, on)
+    local b = Instance.new("TextButton")
+    b.Parent = FilRow
+    b.BackgroundColor3 = on and color or Color3.fromRGB(20, 20, 26)
+    b.BorderSizePixel = 0
+    b.Position = UDim2.new(0, x, 0, 0)
+    b.Size = UDim2.new(0, 58, 1, 0)
+    b.Font = Enum.Font.GothamSemibold
+    b.Text = text
+    b.TextColor3 = Color3.fromRGB(240, 240, 240)
+    b.TextSize = 8
+    b.Modal = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
+    local s = Instance.new("UIStroke")
+    s.Parent = b
+    s.Color = color
+    s.Thickness = 1
+    return b
+end
+
+local EvBtn = makeFil("● Ev", Color3.fromRGB(255, 189, 46), 0, true)
+local FnBtn = makeFil("● Fn", Color3.fromRGB(99, 86, 245), 62, true)
+local ClrBtn = makeFil("✕ Clr", Color3.fromRGB(210, 50, 50), 124, false)
+
+-- Logs scroll
+local LogsScroll = Instance.new("ScrollingFrame")
+LogsScroll.Parent = LeftSide
+LogsScroll.Active = true
+LogsScroll.BackgroundTransparency = 1
+LogsScroll.BorderSizePixel = 0
+LogsScroll.Position = UDim2.new(0, 0, 0, 46)
+LogsScroll.Size = UDim2.new(1, 0, 1, -46)
+LogsScroll.ScrollBarThickness = 2
+LogsScroll.ScrollBarImageColor3 = Color3.fromRGB(99, 86, 245)
+LogsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+LogsScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+
+local LogsLL = Instance.new("UIListLayout")
+LogsLL.Parent = LogsScroll
+LogsLL.SortOrder = Enum.SortOrder.LayoutOrder
+LogsLL.Padding = UDim.new(0, 2)
+
+local LogsLP = Instance.new("UIPadding")
+LogsLP.Parent = LogsScroll
+LogsLP.PaddingTop = UDim.new(0, 2)
+LogsLP.PaddingBottom = UDim.new(0, 2)
+
+-- Divider
+local VDiv = Instance.new("Frame")
+VDiv.Parent = LogsPanel
+VDiv.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+VDiv.BorderSizePixel = 0
+VDiv.Position = UDim2.new(0, 200, 0, 4)
+VDiv.Size = UDim2.new(0, 1, 1, -8)
+VDiv.Active = false
+
+-- Right side (action buttons)
+local RightSide = Instance.new("Frame")
+RightSide.Parent = LogsPanel
+RightSide.BackgroundTransparency = 1
+RightSide.Position = UDim2.new(0, 205, 0, 4)
+RightSide.Size = UDim2.new(1, -209, 1, -8)
+RightSide.Active = false
+
+local RLL = Instance.new("UIListLayout")
+RLL.Parent = RightSide
+RLL.SortOrder = Enum.SortOrder.LayoutOrder
+RLL.Padding = UDim.new(0, 3)
+
+local function makeActBtn(txt, col, ord)
+    local b = Instance.new("TextButton")
+    b.Parent = RightSide
+    b.BackgroundColor3 = col
+    b.BorderSizePixel = 0
+    b.Size = UDim2.new(1, 0, 0, 22)
+    b.LayoutOrder = ord
+    b.Font = Enum.Font.GothamBold
+    b.Text = txt
+    b.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b.TextSize = 9
+    -- KEY FIX: Modal false on all buttons
+    b.Modal = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+    return b
+end
+
+local BtnCopyCode = makeActBtn("Copy Code", Color3.fromRGB(99, 86, 245), 1)
+local BtnCopyPath = makeActBtn("Copy Path", Color3.fromRGB(52, 152, 219), 2)
+local BtnRun = makeActBtn("Execute", Color3.fromRGB(39, 174, 96), 3)
+local BtnViewCode = makeActBtn("View Code", Color3.fromRGB(55, 55, 75), 4)
+local BtnExclude = makeActBtn("Exclude", Color3.fromRGB(85, 85, 100), 5)
+local BtnBlock = makeActBtn("Block", Color3.fromRGB(165, 42, 42), 6)
+local BtnReset = makeActBtn("Rst Count", Color3.fromRGB(28, 28, 40), 7)
+
+-- ============================================================
+-- CODE PANEL
+-- ============================================================
+local CodePanel = Instance.new("Frame")
+CodePanel.Parent = Content
+CodePanel.BackgroundTransparency = 1
+CodePanel.Size = UDim2.new(1, 0, 1, 0)
+CodePanel.Visible = false
+CodePanel.Active = false
+
+local CodeBg = Instance.new("Frame")
+CodeBg.Parent = CodePanel
+CodeBg.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+CodeBg.BorderSizePixel = 0
+CodeBg.Position = UDim2.new(0, 4, 0, 4)
+CodeBg.Size = UDim2.new(1, -8, 1, -32)
+CodeBg.Active = false
+Instance.new("UICorner", CodeBg).CornerRadius = UDim.new(0, 7)
+
+local LineNumBg = Instance.new("Frame")
+LineNumBg.Parent = CodeBg
+LineNumBg.BackgroundColor3 = Color3.fromRGB(17, 17, 22)
+LineNumBg.BorderSizePixel = 0
+LineNumBg.Size = UDim2.new(0, 22, 1, 0)
+LineNumBg.Active = false
+Instance.new("UICorner", LineNumBg).CornerRadius = UDim.new(0, 7)
+
+local LineNumFix = Instance.new("Frame")
+LineNumFix.Parent = LineNumBg
+LineNumFix.BackgroundColor3 = Color3.fromRGB(17, 17, 22)
+LineNumFix.BorderSizePixel = 0
+LineNumFix.Position = UDim2.new(0.5, 0, 0, 0)
+LineNumFix.Size = UDim2.new(0.5, 0, 1, 0)
+LineNumFix.Active = false
+
+local LineNums = Instance.new("TextLabel")
+LineNums.Parent = LineNumBg
+LineNums.BackgroundTransparency = 1
+LineNums.Position = UDim2.new(0, 0, 0, 6)
+LineNums.Size = UDim2.new(1, -3, 1, -6)
+LineNums.Font = Enum.Font.Code
+LineNums.Text = "1"
+LineNums.TextColor3 = Color3.fromRGB(65, 65, 85)
+LineNums.TextSize = 9
+LineNums.TextXAlignment = Enum.TextXAlignment.Right
+LineNums.TextYAlignment = Enum.TextYAlignment.Top
+LineNums.ClipsDescendants = true
+
+local CodeScroll = Instance.new("ScrollingFrame")
+CodeScroll.Parent = CodeBg
+CodeScroll.Active = true
+CodeScroll.BackgroundTransparency = 1
+CodeScroll.BorderSizePixel = 0
+CodeScroll.Position = UDim2.new(0, 24, 0, 0)
+CodeScroll.Size = UDim2.new(1, -24, 1, 0)
+CodeScroll.ScrollBarThickness = 2
+CodeScroll.ScrollBarImageColor3 = Color3.fromRGB(99, 86, 245)
+CodeScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+CodeScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+
+local CodeText = Instance.new("TextLabel")
+CodeText.Parent = CodeScroll
+CodeText.BackgroundTransparency = 1
+CodeText.Position = UDim2.new(0, 5, 0, 6)
+CodeText.Size = UDim2.new(1, -5, 0, 0)
+CodeText.Font = Enum.Font.Code
+CodeText.Text = "-- SimpleSpy v4.2\n-- Select a remote"
+CodeText.TextColor3 = Color3.fromRGB(185, 185, 200)
+CodeText.TextSize = 9
+CodeText.TextXAlignment = Enum.TextXAlignment.Left
+CodeText.TextYAlignment = Enum.TextYAlignment.Top
+CodeText.TextWrapped = false
+CodeText.AutomaticSize = Enum.AutomaticSize.Y
+
+-- Code action bar
+local CodeBar = Instance.new("Frame")
+CodeBar.Parent = CodePanel
+CodeBar.BackgroundTransparency = 1
+CodeBar.Position = UDim2.new(0, 4, 1, -28)
+CodeBar.Size = UDim2.new(1, -8, 0, 24)
+CodeBar.Active = false
+
+local function makeCodeBtn(txt, col, x, w)
+    local b = Instance.new("TextButton")
+    b.Parent = CodeBar
+    b.BackgroundColor3 = col
+    b.BorderSizePixel = 0
+    b.Position = UDim2.new(0, x, 0, 0)
+    b.Size = UDim2.new(0, w, 1, 0)
+    b.Font = Enum.Font.GothamBold
+    b.Text = txt
+    b.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b.TextSize = 9
+    b.Modal = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+    return b
+end
+
+local CBCopy = makeCodeBtn("Copy", Color3.fromRGB(99,86,245), 0, 78)
+local CBRun = makeCodeBtn("Execute", Color3.fromRGB(39,174,96), 82, 78)
+local CBPath = makeCodeBtn("Path", Color3.fromRGB(52,152,219), 164, 78)
+local CBBack = makeCodeBtn("← Back", Color3.fromRGB(30,30,42), 246, 78)
+
+-- ============================================================
+-- SETTINGS PANEL
+-- ============================================================
+local SetPanel = Instance.new("Frame")
+SetPanel.Parent = Content
+SetPanel.BackgroundTransparency = 1
+SetPanel.Size = UDim2.new(1, 0, 1, 0)
+SetPanel.Visible = false
+SetPanel.Active = false
+
+local SetScroll = Instance.new("ScrollingFrame")
+SetScroll.Parent = SetPanel
+SetScroll.Active = true
+SetScroll.BackgroundTransparency = 1
+SetScroll.BorderSizePixel = 0
+SetScroll.Position = UDim2.new(0, 4, 0, 4)
+SetScroll.Size = UDim2.new(1, -8, 1, -8)
+SetScroll.ScrollBarThickness = 2
+SetScroll.ScrollBarImageColor3 = Color3.fromRGB(99, 86, 245)
+SetScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+SetScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+
+local SetLL = Instance.new("UIListLayout")
+SetLL.Parent = SetScroll
+SetLL.SortOrder = Enum.SortOrder.LayoutOrder
+SetLL.FillDirection = Enum.FillDirection.Horizontal
+SetLL.Wraps = true
+SetLL.Padding = UDim.new(0, 4)
+
+local SetPad = Instance.new("UIPadding")
+SetPad.Parent = SetScroll
+SetPad.PaddingTop = UDim.new(0, 4)
+SetPad.PaddingLeft = UDim.new(0, 4)
+SetPad.PaddingRight = UDim.new(0, 4)
+SetPad.PaddingBottom = UDim.new(0, 4)
+
+-- ============================================================
+-- VARIABLES
+-- ============================================================
+local spyOn = true
+local remoteData = {}
+local logs = {}
+local selected = nil
+local blacklist = {}
+local blocklist = {}
+local guiOpen = false
+local guiMin = false
+local filterEv = true
+local filterFn = true
+local autoblock = false
+local history = {}
+local hookedNC = false
+local currentCode = ""
+local connections = {}
+
+local pDrag = false
+local pDragIn, pDragSt, pDragPos
+local pWasDrag = false
+local mDrag = false
+local mDragIn, mDragSt, mDragPos
+
+local pending = {}
+local pendingEnabled = true
+
+_G.SIMPLESPYCONFIG_MaxRemotes = 150
+
+-- ============================================================
+-- QUEUE (2 per frame max)
+-- ============================================================
+local qConn = RunService.Heartbeat:Connect(function()
+    if not pendingEnabled then return end
+    local done = 0
+    while #pending > 0 and done < 2 do
+        local fn = table.remove(pending, 1)
+        if type(fn) == "function" then pcall(fn) end
+        done += 1
+    end
+    if #pending > 500 then
+        local keep = {}
+        for i = 1, 100 do keep[i] = pending[i] end
+        pending = keep
+    end
+end)
+
+table.insert(connections, qConn)
+
+local function enqueue(fn)
+    if type(fn) == "function" then
+        table.insert(pending, fn)
+    end
+end
+
+-- ============================================================
+-- DRAGGING (Pill)
+-- ============================================================
+Pill.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        pDrag = true
+        pWasDrag = false
+        pDragSt = inp.Position
+        pDragPos = Pill.Position
+        inp.Changed:Connect(function()
+            if inp.UserInputState == Enum.UserInputState.End then
+                pDrag = false
+            end
+        end)
+    end
+end)
+
+Pill.InputChanged:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        pDragIn = inp
+    end
+end)
+
+-- Dragging (Main)
+TopBar.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        mDrag = true
+        mDragSt = inp.Position
+        mDragPos = Main.Position
+        inp.Changed:Connect(function()
+            if inp.UserInputState == Enum.UserInputState.End then
+                mDrag = false
+            end
+        end)
+    end
+end)
+
+TopBar.InputChanged:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        mDragIn = inp
+    end
+end)
+
+-- KEY FIX: Use ONE global InputChanged
+-- instead of multiple per-frame checks
+table.insert(connections, UserInputService.InputChanged:Connect(function(inp)
+    local vp = workspace.CurrentCamera.ViewportSize
+    if inp == pDragIn and pDrag then
+        local d = inp.Position - pDragSt
+        if d.Magnitude > 5 then pWasDrag = true end
+        Pill.Position = UDim2.new(
+            0, math.clamp(pDragPos.X.Offset + d.X, 0, vp.X - 90),
+            0, math.clamp(pDragPos.Y.Offset + d.Y, 0, vp.Y - 26)
+        )
+    end
+    if inp == mDragIn and mDrag then
+        local d = inp.Position - mDragSt
+        Main.Position = UDim2.new(
+            0, math.clamp(mDragPos.X.Offset + d.X, 0, vp.X - 350),
+            0, math.clamp(mDragPos.Y.Offset + d.Y, 0, vp.Y - 220)
+        )
+    end
+end))
+
+-- ============================================================
+-- OPEN / CLOSE
+-- ============================================================
+local function openGui()
+    guiOpen = true
+    Main.Visible = true
+    local vp = workspace.CurrentCamera.ViewportSize
+    local px = Pill.AbsolutePosition.X
+    local py = Pill.AbsolutePosition.Y
+    Main.Size = UDim2.new(0, 10, 0, 10)
+    Main.Position = UDim2.new(0, px + 45, 0, py + 13)
+    local tx = math.clamp(px - 130, 5, vp.X - 355)
+    local ty = math.clamp(py + 32, 5, vp.Y - 225)
+    TweenService:Create(Main,
+        TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 350, 0, 220),
+        Position = UDim2.new(0, tx, 0, ty)
+    }):Play()
+end
+
+local function closeGui()
+    guiOpen = false
+    local px = Pill.AbsolutePosition.X
+    local py = Pill.AbsolutePosition.Y
+    TweenService:Create(Main,
+        TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Size = UDim2.new(0, 10, 0, 10),
+        Position = UDim2.new(0, px + 45, 0, py + 13)
+    }):Play()
+    task.delay(0.25, function()
+        if not guiOpen then Main.Visible = false end
+    end)
+end
+
+PillBtn.MouseButton1Click:Connect(function()
+    if pWasDrag then return end
+    if guiOpen then closeGui() else openGui() end
+end)
+
+-- ============================================================
+-- TABS
+-- ============================================================
+local panelMap = {
+    Logs = LogsPanel,
+    Code = CodePanel,
+    Settings = SetPanel
+}
+local tabMap = {
+    Logs = LogTab,
+    Code = CodeTab,
+    Settings = SetTab
+}
+local tabXPos = {Logs = 4, Code = 82, Settings = 160}
+
+local function switchTab(name)
+    for k, v in pairs(panelMap) do v.Visible = k == name end
+    for k, v in pairs(tabMap) do
+        v.TextColor3 = k == name
+            and Color3.fromRGB(255, 255, 255)
+            or Color3.fromRGB(85, 85, 100)
+    end
+    TweenService:Create(TabLine, TweenInfo.new(0.18), {
+        Position = UDim2.new(0, tabXPos[name], 1, -2)
+    }):Play()
+end
+
+LogTab.MouseButton1Click:Connect(function() switchTab("Logs") end)
+CodeTab.MouseButton1Click:Connect(function() switchTab("Code") end)
+SetTab.MouseButton1Click:Connect(function() switchTab("Settings") end)
+
+-- ============================================================
+-- CODE DISPLAY
+-- ============================================================
+local function setCode(code)
+    currentCode = code or ""
+    CodeText.Text = currentCode
+    local n, s = 0, ""
+    for _ in (currentCode .. "\n"):gmatch("[^\n]*\n") do
+        n += 1
+        s = s .. n .. "\n"
+    end
+    LineNums.Text = s
+    task.defer(function()
+        CodeScroll.CanvasSize = UDim2.new(
+            0, 0, 0, CodeText.AbsoluteSize.Y + 12
+        )
+    end)
+end
+
+-- ============================================================
+-- VALUE TO STRING
+-- ============================================================
+local function v2s(v, d)
+    d = d or 0
+    if d > 2 then return "..." end
+    local ok, r = pcall(function()
+        local t = typeof(v)
+        if t == "nil" then return "nil"
+        elseif t == "boolean" or t == "number" then
+            return tostring(v)
+        elseif t == "string" then
+            return string.format("%q", v)
+        elseif t == "Instance" then
+            local p = "nil"
+            pcall(function() p = "game."..v:GetFullName() end)
+            return p
+        elseif t == "Vector3" then
+            return string.format("Vector3.new(%g,%g,%g)", v.X, v.Y, v.Z)
+        elseif t == "Vector2" then
+            return string.format("Vector2.new(%g,%g)", v.X, v.Y)
+        elseif t == "CFrame" then
+            return string.format("CFrame.new(%g,%g,%g)", v.X, v.Y, v.Z)
+        elseif t == "Color3" then
+            return string.format("Color3.fromRGB(%d,%d,%d)",
+                math.floor(v.R*255), math.floor(v.G*255), math.floor(v.B*255))
+        elseif t == "UDim2" then
+            return string.format("UDim2.new(%g,%g,%g,%g)",
+                v.X.Scale, v.X.Offset, v.Y.Scale, v.Y.Offset)
+        elseif t == "EnumItem" then return tostring(v)
+        elseif t == "BrickColor" then
+            return string.format("BrickColor.new(%q)", tostring(v))
+        elseif t == "table" then
+            local parts, c = {}, 0
+            for k2, v2 in pairs(v) do
+                c += 1
+                if c > 12 then
+                    table.insert(parts, "    -- ...")
+                    break
+                end
+                local ks = type(k2) == "string"
+                    and k2:match("^[%a_][%w_]*$")
+                    and k2
+                    or "["..v2s(k2, d+1).."]"
+                table.insert(parts, "    "..ks.." = "..v2s(v2, d+1))
+            end
+            return #parts == 0 and "{}"
+                or "{\n"..table.concat(parts, ",\n").."\n}"
+        else return "nil --[["..t.."]]" end
+    end)
+    return ok and r or "nil"
+end
+
+-- ============================================================
+-- GEN SCRIPT
+-- ============================================================
+local function genScript(remote, args)
+    local out = {
+        "-- SimpleSpy v4.2",
+        "-- " .. (remote and remote.Name or "?"),
+        ""
+    }
+    local path = "nil"
+    pcall(function() path = "game."..remote:GetFullName() end)
+    local method = "FireServer"
+    pcall(function()
+        if remote:IsA("RemoteFunction") then method = "InvokeServer" end
+    end)
+    if args and #args > 0 then
+        table.insert(out, "local args = {")
+        for i, v in ipairs(args) do
+            if i > 20 then table.insert(out, "    -- ...") break end
+            table.insert(out, "    ["..i.."] = "..v2s(v)..",")
+        end
+        table.insert(out, "}")
+        table.insert(out, "")
+        table.insert(out, path..":"..method.."(table.unpack(args))")
+    else
+        table.insert(out, path..":"..method.."()")
+    end
+    return table.concat(out, "\n")
+end
+
+-- ============================================================
+-- CREATE ENTRY
+-- ============================================================
+local function createEntry(name, rtype, key)
+    local isEv = rtype == "Event"
+    local accent = isEv
+        and Color3.fromRGB(255, 189, 46)
+        or Color3.fromRGB(99, 86, 245)
+
+    local frame = Instance.new("Frame")
+    frame.BackgroundColor3 = Color3.fromRGB(21, 21, 27)
+    frame.BorderSizePixel = 0
+    frame.Size = UDim2.new(1, 0, 0, 24)
+    -- KEY FIX: Frame not active
+    frame.Active = false
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 5)
+
+    local fstroke = Instance.new("UIStroke")
+    fstroke.Parent = frame
+    fstroke.Color = Color3.fromRGB(28, 28, 38)
+    fstroke.Thickness = 1
+
+    local bar = Instance.new("Frame")
+    bar.Parent = frame
+    bar.BackgroundColor3 = accent
+    bar.BorderSizePixel = 0
+    bar.Position = UDim2.new(0, 0, 0, 3)
+    bar.Size = UDim2.new(0, 3, 1, -6)
+    bar.Active = false
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+    local icon = Instance.new("TextLabel")
+    icon.Parent = frame
+    icon.BackgroundTransparency = 1
+    icon.Position = UDim2.new(0, 5, 0, 0)
+    icon.Size = UDim2.new(0, 14, 1, 0)
+    icon.Font = Enum.Font.GothamBold
+    icon.Text = isEv and "E" or "F"
+    icon.TextColor3 = accent
+    icon.TextSize = 8
+    icon.ZIndex = 2
+
+    local nameL = Instance.new("TextLabel")
+    nameL.Parent = frame
+    nameL.BackgroundTransparency = 1
+    nameL.Position = UDim2.new(0, 19, 0, 0)
+    nameL.Size = UDim2.new(1, -58, 1, 0)
+    nameL.Font = Enum.Font.GothamSemibold
+    nameL.Text = name
+    nameL.TextColor3 = Color3.fromRGB(190, 190, 200)
+    nameL.TextSize = 9
+    nameL.TextXAlignment = Enum.TextXAlignment.Left
+    nameL.TextTruncate = Enum.TextTruncate.AtEnd
+    nameL.ZIndex = 2
+
+    local badge = Instance.new("Frame")
+    badge.Name = "Badge"
+    badge.Parent = frame
+    badge.BackgroundColor3 = Color3.fromRGB(99, 86, 245)
+    badge.BorderSizePixel = 0
+    badge.Position = UDim2.new(1, -36, 0.5, -7)
+    badge.Size = UDim2.new(0, 33, 0, 14)
+    badge.Visible = false
+    badge.ZIndex = 2
+    badge.Active = false
+    Instance.new("UICorner", badge).CornerRadius = UDim.new(1, 0)
+
+    local badgeTxt = Instance.new("TextLabel")
+    badgeTxt.Name = "T"
+    badgeTxt.Parent = badge
+    badgeTxt.BackgroundTransparency = 1
+    badgeTxt.Size = UDim2.new(1, 0, 1, 0)
+    badgeTxt.Font = Enum.Font.GothamBold
+    badgeTxt.Text = "1"
+    badgeTxt.TextColor3 = Color3.fromRGB(255, 255, 255)
+    badgeTxt.TextSize = 8
+    badgeTxt.ZIndex = 3
+
+    -- KEY FIX: Only the button is active/clickable
+    local btn = Instance.new("TextButton")
+    btn.Parent = frame
+    btn.BackgroundTransparency = 1
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.Text = ""
+    btn.ZIndex = 6
+    btn.Modal = false
+
+    btn.MouseButton1Click:Connect(function()
+        if selected and remoteData[selected] then
+            local od = remoteData[selected]
+            if od.Frame then
+                od.Frame.BackgroundColor3 = Color3.fromRGB(21, 21, 27)
+                local os2 = od.Frame:FindFirstChildOfClass("UIStroke")
+                if os2 then os2.Color = Color3.fromRGB(28, 28, 38) end
+            end
+        end
+        selected = key
+        frame.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+        fstroke.Color = accent
+        if remoteData[key] then
+            setCode(remoteData[key].Script or "")
+        end
+    end)
+
+    frame.Parent = LogsScroll
+    return frame
+end
+
+-- ============================================================
+-- UPDATE BADGE
+-- ============================================================
+local function updateBadge(key)
+    local d = remoteData[key]
+    if not d or not d.Frame then return end
+    local badge = d.Frame:FindFirstChild("Badge")
+    if not badge then return end
+    local c = d.Count
+    if c > 1 then
+        badge.Visible = true
+        local t = badge:FindFirstChild("T")
+        if t then
+            t.Text = c >= 1000
+                and string.format("%.1fk", c/1000)
+                or tostring(c)
+        end
+        badge.BackgroundColor3 = c > 100
+            and Color3.fromRGB(220, 50, 50)
+            or c > 50
+            and Color3.fromRGB(230, 126, 34)
+            or c > 10
+            and Color3.fromRGB(200, 160, 20)
+            or Color3.fromRGB(99, 86, 245)
+    else
+        badge.Visible = false
+    end
+end
+
+-- ============================================================
+-- HANDLE REMOTE
+-- ============================================================
+local function handleRemote(remote, args, rtype)
+    if not spyOn or not remote then return false end
+    local name = "?"
+    pcall(function() name = remote.Name end)
+    if blacklist[remote] or blacklist[name] then return false end
+    local blocked = (blocklist[remote] or blocklist[name]) and true or false
+
+    if autoblock then
+        local h = history[remote]
+        if not h then
+            h = {n = 0, t = tick()}
+            history[remote] = h
+        end
+        local now = tick()
+        if now - h.t < 1 then
+            h.n += 1
+            if h.n > 25 then
+                blacklist[remote] = true
+                return false
+            end
+        else h.n = 0 h.t = now end
+    end
+
+    local key = tostring(remote)
+
+    enqueue(function()
+        if not remoteData[key] then
+            remoteData[key] = {
+                Remote = remote,
+                Name = name,
+                Type = rtype,
+                Count = 0,
+                Script = ""
+            }
+            remoteData[key].Frame = createEntry(name, rtype, key)
+            table.insert(logs, remoteData[key])
+        end
+        local d = remoteData[key]
+        d.Count += 1
+        if d.Count == 1 or d.Count % 5 == 0 then
+            local s = genScript(remote, args)
+            if blocked then s = "-- BLOCKED\n\n"..s end
+            d.Script = s
+            if selected == key then setCode(s) end
+        end
+        updateBadge(key)
+        if d.Frame then
+            d.Frame.LayoutOrder = -d.Count
+        end
+        LogsScroll.CanvasSize = UDim2.new(
+            0, 0, 0, LogsLL.AbsoluteContentSize.Y + 4
+        )
+        local max = _G.SIMPLESPYCONFIG_MaxRemotes or 150
+        if #logs > max then
+            local old = table.remove(logs, 1)
+            if old then
+                if old.Frame then old.Frame:Destroy() end
+                if old.Remote then
+                    remoteData[tostring(old.Remote)] = nil
+                end
+            end
+        end
+    end)
+
+    return blocked
+end
+
+-- ============================================================
+-- HOOKS
+-- ============================================================
+local ncHook = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if typeof(self) == "Instance"
+    and (method == "FireServer" or method == "InvokeServer") then
+        local ok, isR = pcall(function()
+            return self:IsA("RemoteEvent") or self:IsA("RemoteFunction")
+        end)
+        if ok and isR then
+            local args = {...}
+            local rtype = method == "FireServer" and "Event" or "Function"
+            local blocked = handleRemote(self, args, rtype)
+            if blocked then
+                return method == "InvokeServer" and nil or nil
+            end
+            return original(self, table.unpack(args))
+        end
+    end
+    return original(self, ...)
+end, originalNamecall)
+
+local fireHook = newcclosure(function(self, ...)
+    if typeof(self) ~= "Instance" then return origFire(self, ...) end
+    local args = {...}
+    local blocked = handleRemote(self, args, "Event")
+    if blocked then return end
+    return origFire(self, table.unpack(args))
+end, origFire)
+
+local invokeHook = newcclosure(function(self, ...)
+    if typeof(self) ~= "Instance" then return origInvoke(self, ...) end
+    local args = {...}
+    local blocked = handleRemote(self, args, "Function")
+    if blocked then return nil end
+    return origInvoke(self, table.unpack(args))
+end, origInvoke)
+
+-- ============================================================
+-- APPLY / REMOVE HOOKS
+-- ============================================================
+local function applyHooks()
+    if hookmetamethod then
+        local ok, r = pcall(function()
+            return hookmetamethod(game, "__namecall", ncHook)
+        end)
+        if ok and r then
+            original = r
+            hookedNC = true
+        end
+    end
+    if not hookedNC then
+        pcall(function()
+            setreadonly(gmt, false)
+            rawset(gmt, "__namecall", ncHook)
+            setreadonly(gmt, true)
+            hookedNC = true
+        end)
+    end
+    pcall(function()
+        hookfunction(_re.FireServer, fireHook)
+        hookfunction(_rf.InvokeServer, invokeHook)
+    end)
+    spyOn = true
+    StatDot.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
+    PillDot.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
+    TitleLbl.Text = "SimpleSpy • ON"
+end
+
+local function removeHooks()
+    if hookmetamethod and original then
+        pcall(function() hookmetamethod(game, "__namecall", original) end)
+    elseif hookedNC then
+        pcall(function()
+            setreadonly(gmt, false)
+            rawset(gmt, "__namecall", originalNamecall)
+            setreadonly(gmt, true)
+        end)
+    end
+    pcall(function()
+        if origFire then hookfunction(_re.FireServer, origFire) end
+        if origInvoke then hookfunction(_rf.InvokeServer, origInvoke) end
+    end)
+    hookedNC = false
+    spyOn = false
+    StatDot.BackgroundColor3 = Color3.fromRGB(210, 50, 50)
+    PillDot.BackgroundColor3 = Color3.fromRGB(210, 50, 50)
+    TitleLbl.Text = "SimpleSpy • OFF"
+end
+
+-- ============================================================
+-- SHUTDOWN
+-- ============================================================
+local function shutdown()
+    pendingEnabled = false
+    pending = {}
+    removeHooks()
+    for _, c in pairs(connections) do
+        pcall(function() c:Disconnect() end)
+    end
+    pcall(function() ScreenGui:Destroy() end)
+    _G.SimpleSpyExecuted = false
+    _G.SimpleSpyShutdown = nil
+end
+
+-- ============================================================
+-- BUTTONS
+-- ============================================================
+RedBtn.MouseButton1Click:Connect(shutdown)
+
+YellowBtn.MouseButton1Click:Connect(function()
+    guiMin = not guiMin
+    if guiMin then
+        Content.Visible = false
+        TabRow.Visible = false
+        Div.Visible = false
+        TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+            Size = UDim2.new(0, 350, 0, 30)
+        }):Play()
+    else
+        TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+            Size = UDim2.new(0, 350, 0, 220)
+        }):Play()
+        task.delay(0.2, function()
+            if not guiMin then
+                Content.Visible = true
+                TabRow.Visible = true
+                Div.Visible = true
+            end
+        end)
+    end
+end)
+
+GreenBtn.MouseButton1Click:Connect(function()
+    if spyOn then removeHooks() else applyHooks() end
+end)
+
+EvBtn.MouseButton1Click:Connect(function()
+    filterEv = not filterEv
+    EvBtn.BackgroundColor3 = filterEv
+        and Color3.fromRGB(255, 189, 46)
+        or Color3.fromRGB(20, 20, 26)
+    for _, d in pairs(remoteData) do
+        if d.Frame and d.Type == "Event" then
+            d.Frame.Visible = filterEv
+        end
+    end
+end)
+
+FnBtn.MouseButton1Click:Connect(function()
+    filterFn = not filterFn
+    FnBtn.BackgroundColor3 = filterFn
+        and Color3.fromRGB(99, 86, 245)
+        or Color3.fromRGB(20, 20, 26)
+    for _, d in pairs(remoteData) do
+        if d.Frame and d.Type == "Function" then
+            d.Frame.Visible = filterFn
+        end
+    end
+end)
+
+ClrBtn.MouseButton1Click:Connect(function()
+    for _, d in pairs(remoteData) do
+        if d.Frame then d.Frame:Destroy() end
+    end
+    remoteData = {}
+    logs = {}
+    selected = nil
+    history = {}
+    pending = {}
+    setCode("-- Cleared")
+    LogsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+end)
+
+SearchInput:GetPropertyChangedSignal("Text"):Connect(function()
+    local q = SearchInput.Text:lower()
+    for _, d in pairs(remoteData) do
+        if d.Frame then
+            local match = q == "" or d.Name:lower():find(q, 1, true)
+            local typeOk = (d.Type == "Event" and filterEv)
+                or (d.Type == "Function" and filterFn)
+            d.Frame.Visible = (match and typeOk) == true
+        end
+    end
+end)
+
+BtnCopyCode.MouseButton1Click:Connect(function()
+    if currentCode ~= "" then pcall(setclipboard, currentCode) end
+end)
+
+BtnCopyPath.MouseButton1Click:Connect(function()
+    if selected and remoteData[selected] then
+        local p = "nil"
+        pcall(function() p = "game."..remoteData[selected].Remote:GetFullName() end)
+        pcall(setclipboard, p)
+    end
+end)
+
+BtnRun.MouseButton1Click:Connect(function()
+    if currentCode ~= "" then
+        pcall(function() loadstring(currentCode)() end)
+    end
+end)
+
+BtnViewCode.MouseButton1Click:Connect(function() switchTab("Code") end)
+
+BtnExclude.MouseButton1Click:Connect(function()
+    if selected and remoteData[selected] then
+        local d = remoteData[selected]
+        blacklist[d.Remote] = true
+        if d.Frame then d.Frame:Destroy() end
+        remoteData[selected] = nil
+        selected = nil
+        setCode("-- Excluded")
+    end
+end)
+
+BtnBlock.MouseButton1Click:Connect(function()
+    if selected and remoteData[selected] then
+        blocklist[remoteData[selected].Remote] = true
+    end
+end)
+
+BtnReset.MouseButton1Click:Connect(function()
+    for key, d in pairs(remoteData) do
+        d.Count = 0
+        updateBadge(key)
+    end
+end)
+
+CBCopy.MouseButton1Click:Connect(function()
+    if currentCode ~= "" then pcall(setclipboard, currentCode) end
+end)
+
+CBRun.MouseButton1Click:Connect(function()
+    if currentCode ~= "" then
+        local ok, err = pcall(function() loadstring(currentCode)() end)
+        if not ok then
+            setCode("-- Error:\n-- "..tostring(err).."\n\n"..currentCode)
+        end
+    end
+end)
+
+CBPath.MouseButton1Click:Connect(function()
+    if selected and remoteData[selected] then
+        local p = "nil"
+        pcall(function() p = "game."..remoteData[selected].Remote:GetFullName() end)
+        pcall(setclipboard, p)
+    end
+end)
+
+CBBack.MouseButton1Click:Connect(function() switchTab("Logs") end)
+
+-- ============================================================
+-- SETTINGS
+-- ============================================================
+local function makeSetRow(txt, def, cb)
+    local row = Instance.new("Frame")
+    row.Parent = SetScroll
+    row.BackgroundColor3 = Color3.fromRGB(21, 21, 27)
+    row.BorderSizePixel = 0
+    row.Size = UDim2.new(0, 158, 0, 30)
+    row.Active = false
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+    local rs = Instance.new("UIStroke")
+    rs.Parent = row
+    rs.Color = Color3.fromRGB(28, 28, 38)
+    rs.Thickness = 1
+    local lbl = Instance.new("TextLabel")
+    lbl.Parent = row
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 7, 0, 0)
+    lbl.Size = UDim2.new(1, -46, 1, 0)
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.Text = txt
+    lbl.TextColor3 = Color3.fromRGB(170, 170, 185)
+    lbl.TextSize = 9
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextWrapped = true
+    local val = def
+    local tb = Instance.new("TextButton")
+    tb.Parent = row
+    tb.BackgroundColor3 = val
+        and Color3.fromRGB(99, 86, 245)
+        or Color3.fromRGB(32, 32, 44)
+    tb.BorderSizePixel = 0
+    tb.Position = UDim2.new(1, -40, 0.5, -9)
+    tb.Size = UDim2.new(0, 34, 0, 18)
+    tb.Font = Enum.Font.GothamBold
+    tb.Text = val and "ON" or "OFF"
+    tb.TextColor3 = Color3.fromRGB(255, 255, 255)
+    tb.TextSize = 8
+    tb.Modal = false
+    Instance.new("UICorner", tb).CornerRadius = UDim.new(0, 4)
+    tb.MouseButton1Click:Connect(function()
+        val = not val
+        TweenService:Create(tb, TweenInfo.new(0.15), {
+            BackgroundColor3 = val
+                and Color3.fromRGB(99, 86, 245)
+                or Color3.fromRGB(32, 32, 44)
+        }):Play()
+        tb.Text = val and "ON" or "OFF"
+        pcall(cb, val)
+    end)
+    SetScroll.CanvasSize = UDim2.new(
+        0, 0, 0, SetLL.AbsoluteContentSize.Y + 8
+    )
+    return row
+end
+
+local function makeSetAct(txt, col, cb)
+    local b = Instance.new("TextButton")
+    b.Parent = SetScroll
+    b.BackgroundColor3 = col
+    b.BorderSizePixel = 0
+    b.Size = UDim2.new(0, 158, 0, 30)
+    b.Font = Enum.Font.GothamBold
+    b.Text = txt
+    b.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b.TextSize = 9
+    b.Modal = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    b.MouseButton1Click:Connect(function() pcall(cb) end)
+    SetScroll.CanvasSize = UDim2.new(
+        0, 0, 0, SetLL.AbsoluteContentSize.Y + 8
+    )
+    return b
+end
+
+makeSetRow("Auto Block", false, function(v)
+    autoblock = v
+    if not v then history = {} end
+end)
+
+makeSetRow("Spy Active", true, function(v)
+    if v then applyHooks() else removeHooks() end
+end)
+
+makeSetAct("Clr Blacklist", Color3.fromRGB(35, 35, 48), function()
+    blacklist = {}
+end)
+
+makeSetAct("Clr Blocklist", Color3.fromRGB(35, 35, 48), function()
+    blocklist = {}
+end)
+
+makeSetAct("Clear All", Color3.fromRGB(140, 38, 38), function()
+    for _, d in pairs(remoteData) do
+        if d.Frame then d.Frame:Destroy() end
+    end
+    remoteData = {}
+    logs = {}
+    selected = nil
+    history = {}
+    pending = {}
+    setCode("-- Cleared")
+    LogsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+end)
+
+-- ============================================================
+-- INIT
+-- ============================================================
+applyHooks()
+
+if syn and syn.protect_gui then
+    pcall(syn.protect_gui, ScreenGui)
+end
+
+ScreenGui.Parent = CoreGui
+
+_G.SimpleSpyExecuted = true
+_G.SimpleSpyShutdown = shutdown
+_G.SimpleSpy = {
+    BlockRemote = function(r) blocklist[r] = true end,
+    ExcludeRemote = function(r) blacklist[r] = true end,
+}
+
+print("SimpleSpy v4.2 loaded!")
+print("Game buttons now work correctly!")
