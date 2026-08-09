@@ -1,0 +1,307 @@
+-- // ========================== // --
+-- //     MADE BY KATSUKI        // --
+-- // ========================== // --
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+-- // Variables // --
+local freecamEnabled = false
+local cameraLocked = false
+local speed = 45 
+local camCFrame = camera.CFrame
+local xAngle, yAngle = 0, 0
+
+local touchMove = { F = false, B = false, L = false, R = false, U = false, D = false }
+
+-- // Theme Colors // --
+local Theme = {
+	Background = Color3.fromRGB(15, 15, 18),
+	Surface = Color3.fromRGB(25, 25, 30),
+	Outline = Color3.fromRGB(45, 45, 55),
+	Text = Color3.fromRGB(240, 240, 240),
+	AccentGreen = Color3.fromRGB(46, 204, 113),
+	AccentRed = Color3.fromRGB(231, 76, 60),
+	Highlight = Color3.fromRGB(50, 50, 60)
+}
+
+-- // UI Creation // --
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "KatsukiPremiumFreecam"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = game.CoreGui or player.PlayerGui
+
+-- Main Draggable Panel (Slightly taller to fit watermark)
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 250, 0, 350)
+MainFrame.Position = UDim2.new(0, 50, 0, 50)
+MainFrame.BackgroundColor3 = Theme.Background
+MainFrame.BackgroundTransparency = 0.1
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Parent = ScreenGui
+
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+local MainStroke = Instance.new("UIStroke", MainFrame)
+MainStroke.Color = Theme.Outline
+MainStroke.Thickness = 1.5
+
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.BackgroundTransparency = 1
+Title.Text = "✧ FREECAM"
+Title.TextColor3 = Theme.Text
+Title.TextSize = 18
+Title.Font = Enum.Font.GothamBlack
+Title.Parent = MainFrame
+
+-- Divider Line
+local Divider = Instance.new("Frame")
+Divider.Size = UDim2.new(0.9, 0, 0, 1)
+Divider.Position = UDim2.new(0.05, 0, 0, 40)
+Divider.BackgroundColor3 = Theme.Outline
+Divider.BorderSizePixel = 0
+Divider.Parent = MainFrame
+
+-- // Watermark: MADE BY KATSUKI // --
+local Watermark = Instance.new("TextLabel")
+Watermark.Size = UDim2.new(1, 0, 0, 20)
+Watermark.Position = UDim2.new(0, 0, 1, -25) -- Fixed to the bottom
+Watermark.BackgroundTransparency = 1
+Watermark.Text = "MADE BY KATSUKI"
+Watermark.TextColor3 = Theme.Text
+Watermark.TextTransparency = 0.5 -- Subtle, transparent look
+Watermark.TextSize = 11
+Watermark.Font = Enum.Font.GothamMedium
+Watermark.Parent = MainFrame
+
+-- Show Button (Hidden initially, tiny & premium)
+local ShowBtn = Instance.new("TextButton")
+ShowBtn.Size = UDim2.new(0, 120, 0, 40)
+ShowBtn.Position = UDim2.new(0, 50, 0, 50)
+ShowBtn.BackgroundColor3 = Theme.Background
+ShowBtn.BackgroundTransparency = 0.2
+ShowBtn.TextColor3 = Theme.Text
+ShowBtn.Text = "✧ Show"
+ShowBtn.Font = Enum.Font.GothamBold
+ShowBtn.Visible = false
+ShowBtn.Active = true
+ShowBtn.Parent = ScreenGui
+Instance.new("UICorner", ShowBtn).CornerRadius = UDim.new(0, 10)
+local ShowStroke = Instance.new("UIStroke", ShowBtn)
+ShowStroke.Color = Theme.Outline
+ShowStroke.Thickness = 1.5
+
+-- // Animation Helper // --
+local function tween(obj, props, time)
+	local info = TweenInfo.new(time or 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(obj, info, props):Play()
+end
+
+-- // Button Generator // --
+local function createButton(text, yPos)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 220, 0, 36)
+	btn.Position = UDim2.new(0, 15, 0, yPos)
+	btn.BackgroundColor3 = Theme.Surface
+	btn.TextColor3 = Theme.Text
+	btn.Text = text
+	btn.Font = Enum.Font.GothamBold
+	btn.AutoButtonColor = false
+	btn.Parent = MainFrame
+	
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+	local stroke = Instance.new("UIStroke", btn)
+	stroke.Color = Theme.Outline
+	stroke.Thickness = 1
+	
+	-- Touch Animation
+	btn.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			tween(btn, {Size = UDim2.new(0, 210, 0, 32), Position = UDim2.new(0, 20, 0, yPos + 2)})
+		end
+	end)
+	btn.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			tween(btn, {Size = UDim2.new(0, 220, 0, 36), Position = UDim2.new(0, 15, 0, yPos)})
+		end
+	end)
+	
+	return btn, stroke
+end
+
+local ToggleCamBtn, ToggleStroke = createButton("Toggle Freecam", 55)
+local LockCamBtn, LockStroke = createButton("Lock Camera", 100)
+local HideBtn = createButton("Hide Menu ^^", 145)
+
+-- // Premium Directional Pad // --
+local DPadFrame = Instance.new("Frame")
+DPadFrame.Size = UDim2.new(0, 220, 0, 120)
+DPadFrame.Position = UDim2.new(0, 15, 0, 195)
+DPadFrame.BackgroundTransparency = 1
+DPadFrame.Parent = MainFrame
+
+local function createDirBtn(icon, pos, moveKey)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 48, 0, 48)
+	btn.Position = pos
+	btn.BackgroundColor3 = Theme.Surface
+	btn.TextColor3 = Theme.Text
+	btn.Text = icon
+	btn.TextSize = 22
+	btn.Font = Enum.Font.GothamBold
+	btn.AutoButtonColor = false
+	btn.Parent = DPadFrame
+	
+	-- Make it perfectly circular
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+	local stroke = Instance.new("UIStroke", btn)
+	stroke.Color = Theme.Outline
+	stroke.Thickness = 1
+	
+	-- Touch hold logic + smooth animations
+	btn.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			touchMove[moveKey] = true
+			tween(btn, {BackgroundColor3 = Theme.Highlight, Size = UDim2.new(0, 42, 0, 42), Position = pos + UDim2.new(0, 3, 0, 3)}, 0.1)
+		end
+	end)
+	btn.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			touchMove[moveKey] = false
+			tween(btn, {BackgroundColor3 = Theme.Surface, Size = UDim2.new(0, 48, 0, 48), Position = pos}, 0.1)
+		end
+	end)
+end
+
+-- Layout (Using clean text arrows for a premium look)
+createDirBtn("↗", UDim2.new(0, 160, 0, 5), "U")   -- Ascend (Up)
+createDirBtn("↙", UDim2.new(0, 160, 0, 65), "D")  -- Descend (Down)
+
+createDirBtn("↑", UDim2.new(0, 65, 0, 5), "F")    -- Forward
+createDirBtn("↓", UDim2.new(0, 65, 0, 65), "B")   -- Backward
+createDirBtn("←", UDim2.new(0, 10, 0, 65), "L")   -- Left
+createDirBtn("→", UDim2.new(0, 120, 0, 65), "R")  -- Right
+
+-- // Smooth Draggable Logic // --
+local function makeDraggable(gui)
+	local dragging, dragStart, startPos
+	gui.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = input.Position
+			startPos = gui.Position
+		end
+	end)
+	gui.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+			local delta = input.Position - dragStart
+			-- Smooth drag follow
+			tween(gui, {Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)}, 0.08)
+		end
+	end)
+end
+
+makeDraggable(MainFrame)
+makeDraggable(ShowBtn)
+
+-- // Toggles & Functions // --
+HideBtn.MouseButton1Click:Connect(function()
+	tween(MainFrame, {Size = UDim2.new(0, 250, 0, 0)}, 0.2)
+	task.wait(0.2)
+	MainFrame.Visible = false
+	ShowBtn.Visible = true
+	ShowBtn.Size = UDim2.new(0, 0, 0, 40)
+	tween(ShowBtn, {Size = UDim2.new(0, 120, 0, 40)}, 0.2)
+end)
+
+ShowBtn.MouseButton1Click:Connect(function()
+	tween(ShowBtn, {Size = UDim2.new(0, 0, 0, 40)}, 0.2)
+	task.wait(0.2)
+	ShowBtn.Visible = false
+	MainFrame.Visible = true
+	MainFrame.Size = UDim2.new(0, 250, 0, 0)
+	tween(MainFrame, {Size = UDim2.new(0, 250, 0, 350)}, 0.2)
+end)
+
+ToggleCamBtn.MouseButton1Click:Connect(function()
+	freecamEnabled = not freecamEnabled
+	if freecamEnabled then
+		tween(ToggleCamBtn, {BackgroundColor3 = Theme.AccentGreen}, 0.3)
+		tween(ToggleStroke, {Color = Theme.AccentGreen}, 0.3)
+		
+		camCFrame = camera.CFrame
+		local look = camCFrame.LookVector
+		xAngle = math.atan2(-look.X, -look.Z)
+		yAngle = math.asin(look.Y)
+		camera.CameraType = Enum.CameraType.Scriptable
+		
+		if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			player.Character.HumanoidRootPart.Anchored = true
+		end
+	else
+		tween(ToggleCamBtn, {BackgroundColor3 = Theme.Surface}, 0.3)
+		tween(ToggleStroke, {Color = Theme.Outline}, 0.3)
+		camera.CameraType = Enum.CameraType.Custom
+		
+		if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			player.Character.HumanoidRootPart.Anchored = false
+		end
+	end
+end)
+
+LockCamBtn.MouseButton1Click:Connect(function()
+	cameraLocked = not cameraLocked
+	if cameraLocked then
+		tween(LockCamBtn, {BackgroundColor3 = Theme.AccentRed}, 0.3)
+		tween(LockStroke, {Color = Theme.AccentRed}, 0.3)
+	else
+		tween(LockCamBtn, {BackgroundColor3 = Theme.Surface}, 0.3)
+		tween(LockStroke, {Color = Theme.Outline}, 0.3)
+	end
+end)
+
+-- // Mobile Screen Swiping // --
+UserInputService.InputChanged:Connect(function(input, gameProcessed)
+	if gameProcessed then return end 
+	
+	if freecamEnabled and not cameraLocked then
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+			local delta = input.Delta
+			xAngle = xAngle - delta.X * 0.005
+			yAngle = math.clamp(yAngle - delta.Y * 0.005, -math.pi/2, math.pi/2)
+		end
+	end
+end)
+
+-- // Main Camera Loop // --
+RunService.RenderStepped:Connect(function(dt)
+	if freecamEnabled then
+		if not cameraLocked then
+			local moveDir = Vector3.new(
+				(touchMove.R and 1 or 0) - (touchMove.L and 1 or 0),
+				(touchMove.U and 1 or 0) - (touchMove.D and 1 or 0),
+				(touchMove.B and 1 or 0) - (touchMove.F and 1 or 0)
+			)
+			
+			camCFrame = CFrame.new(camCFrame.Position) 
+				* CFrame.Angles(0, xAngle, 0) 
+				* CFrame.Angles(yAngle, 0, 0)
+			
+			camCFrame = camCFrame + camCFrame:VectorToWorldSpace(moveDir * speed * dt)
+		end
+		camera.CFrame = camCFrame
+	end
+end)
