@@ -528,10 +528,19 @@ local function Drag(handle, target)
     end)
 end
 
+-- TapConnect: fires fn exactly ONCE per tap even when both
+-- MouseButton1Click and InputBegan(Touch) fire for the same tap.
 local function TapConnect(btn, fn)
-    btn.MouseButton1Click:Connect(fn)
+    local cd = false
+    local function Fire()
+        if cd then return end
+        cd = true
+        fn()
+        task.delay(0.30, function() cd = false end)
+    end
+    btn.MouseButton1Click:Connect(Fire)
     btn.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.Touch then fn() end
+        if i.UserInputType == Enum.UserInputType.Touch then Fire() end
     end)
 end
 
@@ -682,7 +691,12 @@ local XBtn = Bt(TBar, "✕",
 XBtn.TextSize = 16
 
 local xTaps = 0
+local xCD   = false
 local function FireClose()
+    if xCD then return end   -- block double-fire from Touch + MouseButton1Click
+    xCD = true
+    task.delay(0.30, function() xCD = false end)
+
     xTaps = xTaps + 1
     if xTaps >= 2 then
         xTaps = 0
@@ -702,7 +716,10 @@ local function FireClose()
         end)
     end
 end
-TapConnect(XBtn, FireClose)
+XBtn.MouseButton1Click:Connect(FireClose)
+XBtn.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.Touch then FireClose() end
+end)
 Drag(TBar, Panel)
 
 -- Tab bar
@@ -1068,8 +1085,18 @@ local function ClosePanel()
     S.PanelOpen = false
 end
 
-TapConnect(Toggle, function()
+-- Use a cooldown so a single tap cannot fire twice
+-- (InputBegan + MouseButton1Click both fire on mobile — we only want one)
+local toggleCooldown = false
+local function DoToggle()
+    if toggleCooldown then return end
+    toggleCooldown = true
     if S.PanelOpen then ClosePanel() else OpenPanel() end
+    task.delay(0.35, function() toggleCooldown = false end)
+end
+Toggle.MouseButton1Click:Connect(DoToggle)
+Toggle.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.Touch then DoToggle() end
 end)
 
 -- ═══════════════════════════════════════════
