@@ -1,0 +1,1246 @@
+--[[
+    ╔═══════════════════════════════════════════╗
+    ║         S U D O   H U B   v5             ║
+    ║         Made by Katsuki                  ║
+    ║   Mobile · Freecam · Shader · Touch      ║
+    ╚═══════════════════════════════════════════╝
+]]
+
+-- ═══════════════════════════════════════════
+--  SERVICES
+-- ═══════════════════════════════════════════
+local Players  = game:GetService("Players")
+local Run      = game:GetService("RunService")
+local UIS      = game:GetService("UserInputService")
+local TS       = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+local WS       = game:GetService("Workspace")
+local LP       = Players.LocalPlayer
+
+-- ═══════════════════════════════════════════
+--  COLOURS
+-- ═══════════════════════════════════════════
+local C = {
+    BG      = Color3.fromRGB(8,   9,  14),
+    Panel   = Color3.fromRGB(14,  16,  24),
+    Surface = Color3.fromRGB(20,  23,  35),
+    Card    = Color3.fromRGB(26,  30,  46),
+    Accent  = Color3.fromRGB(99, 179, 255),
+    AccDk   = Color3.fromRGB(50, 105, 175),
+    Text    = Color3.fromRGB(220, 225, 240),
+    Sub     = Color3.fromRGB(100, 112, 150),
+    Green   = Color3.fromRGB(60,  210, 120),
+    Red     = Color3.fromRGB(255,  70,  70),
+    Orange  = Color3.fromRGB(255, 170,  45),
+    Border  = Color3.fromRGB(32,   38,  60),
+    White   = Color3.new(1, 1, 1),
+}
+
+-- ═══════════════════════════════════════════
+--  STATE  — never modified by GUI open/close
+-- ═══════════════════════════════════════════
+local S = {
+    FreecamActive = false,
+    ShaderEnabled = false,
+    PanelOpen     = false,
+    StyleIndex    = 1,
+    ShaderName    = "Rainy Depression",
+    Speed         = 30,
+    FOV           = 70,
+    Smooth        = 0.12,
+    TouchControls = true,
+    -- freecam camera state
+    FC_Pitch = 0,
+    FC_Yaw   = 0,
+    FC_Pos   = Vector3.new(0, 10, 0),
+    -- shader tweakables
+    Bloom_I = 0.04, Bloom_S = 1900, Bloom_T = 0.9,
+    CC_Br   = 0.10, CC_Co   = 0.30, CC_Sa   = 0.10,
+    DOF_F   = 0.08, DOF_D   = 20,   DOF_R   = 18,  DOF_N = 0.20,
+    SR_I    = 0.01, SR_Sp   = 0.14,
+    MB_A    = 8,    MB_Amp  = 4,
+    Amb_R   = 33,   Amb_G   = 33,   Amb_B   = 33,
+    Br      = 6.0,  Expo    = 0.70, Shad    = 0.04,
+}
+
+-- Touch input (written by joystick/look pad, read by freecam loop)
+local TI = {
+    MoveX = 0, MoveY = 0, MoveZ = 0,
+    LookX = 0, LookY = 0,
+}
+
+-- ═══════════════════════════════════════════
+--  FREECAM STYLES  (20)
+-- ═══════════════════════════════════════════
+local Styles = {
+    {N="🎯 Cinematic",   F=50,  V=20,  M=0.08},
+    {N="🚁 Helicopter",  F=75,  V=60,  M=0.22},
+    {N="🦅 Eagle Eye",   F=90,  V=45,  M=0.05},
+    {N="🐢 Slow Motion", F=60,  V=5,   M=0.30},
+    {N="⚡ Lightning",   F=80,  V=150, M=0.03},
+    {N="🎬 Director",    F=55,  V=25,  M=0.12},
+    {N="🌊 Ocean Drift", F=70,  V=15,  M=0.40},
+    {N="🔭 Telescope",   F=20,  V=10,  M=0.06},
+    {N="🎮 FPS Style",   F=100, V=50,  M=0.02},
+    {N="🌀 Drone",       F=85,  V=40,  M=0.18},
+    {N="🎡 Theme Park",  F=110, V=35,  M=0.20},
+    {N="🕊️ Glider",      F=65,  V=30,  M=0.35},
+    {N="🚀 Rocket",      F=95,  V=200, M=0.01},
+    {N="🎥 Steadicam",   F=60,  V=18,  M=0.50},
+    {N="🌌 Space Walk",  F=120, V=10,  M=0.45},
+    {N="🏎️ Racing",      F=105, V=90,  M=0.04},
+    {N="🦋 Butterfly",   F=72,  V=8,   M=0.55},
+    {N="🗺️ Overview",    F=80,  V=70,  M=0.10},
+    {N="📸 Photo",       F=45,  V=12,  M=0.20},
+    {N="🔥 Action Hero", F=88,  V=80,  M=0.06},
+}
+
+-- ═══════════════════════════════════════════
+--  SHADER PRESETS
+-- ═══════════════════════════════════════════
+local Presets = {
+    ["Rainy Depression"] = {
+        AmbR=30,AmbG=35,AmbB=50, OutR=40,OutG=45,OutB=65,
+        TopR=180,TopG=190,TopB=215, Bright=3.0,Expo=0.15,Shad=0.20,
+        EnvD=0.08,EnvS=0.15,
+        BI=0.05,BS=2500,BT=0.82,
+        Br=-0.10,Co=0.20,Sa=-0.45,
+        TR=170,TG=185,TB=215,
+        DF=0.20,DD=10,DR=8,DN=0.50,
+        SRI=0.003,SRS=0.06, MB=false,
+    },
+    ["Soft Sunset RTX"] = {
+        AmbR=60,AmbG=38,AmbB=20, OutR=80,OutG=50,OutB=25,
+        TopR=255,TopG=210,TopB=150, Bright=8.0,Expo=1.1,Shad=0.03,
+        EnvD=0.12,EnvS=0.80,
+        BI=0.10,BS=3200,BT=0.78,
+        Br=0.22,Co=0.42,Sa=0.30,
+        TR=255,TG=185,TB=90,
+        DF=0.05,DD=28,DR=24,DN=0.12,
+        SRI=0.035,SRS=0.28, MB=true,
+    },
+    ["Basic RTX"] = {
+        AmbR=42,AmbG=44,AmbB=52, OutR=55,OutG=58,OutB=72,
+        TopR=255,TopG=252,TopB=248, Bright=7.5,Expo=0.95,Shad=0.03,
+        EnvD=0.15,EnvS=0.85,
+        BI=0.08,BS=2000,BT=0.88,
+        Br=0.18,Co=0.48,Sa=0.22,
+        TR=235,TG=235,TB=255,
+        DF=0.06,DD=24,DR=20,DN=0.14,
+        SRI=0.018,SRS=0.18, MB=true,
+    },
+    ["HD Textures"] = {
+        AmbR=45,AmbG=45,AmbB=50, OutR=58,OutG=60,OutB=70,
+        TopR=255,TopG=255,TopB=250, Bright=7.0,Expo=0.85,Shad=0.04,
+        EnvD=0.18,EnvS=0.92,
+        BI=0.06,BS=1800,BT=0.91,
+        Br=0.14,Co=0.55,Sa=0.50,
+        TR=230,TG=228,TB=255,
+        DF=0.04,DD=30,DR=26,DN=0.10,
+        SRI=0.012,SRS=0.15, MB=false,
+    },
+    ["Summer"] = {
+        AmbR=33,AmbG=33,AmbB=33, OutR=51,OutG=54,OutB=67,
+        TopR=255,TopG=247,TopB=237, Bright=6.67,Expo=0.75,Shad=0.04,
+        EnvD=0.105,EnvS=0.52,
+        BI=0.04,BS=1900,BT=0.915,
+        Br=0.176,Co=0.39,Sa=0.2,
+        TR=255,TG=220,TB=148,
+        DF=0.077,DD=21,DR=20,DN=0.277,
+        SRI=0.01,SRS=0.146, MB=true,
+    },
+    ["Autumn"] = {
+        AmbR=40,AmbG=30,AmbB=20, OutR=60,OutG=48,OutB=35,
+        TopR=255,TopG=220,TopB=180, Bright=5.5,Expo=0.6,Shad=0.06,
+        EnvD=0.10,EnvS=0.50,
+        BI=0.06,BS=2200,BT=0.88,
+        Br=0.15,Co=0.45,Sa=0.15,
+        TR=217,TG=145,TB=57,
+        DF=0.09,DD=18,DR=18,DN=0.30,
+        SRI=0.015,SRS=0.18, MB=true,
+    },
+    ["Night"] = {
+        AmbR=10,AmbG=12,AmbB=30, OutR=15,OutG=18,OutB=45,
+        TopR=80,TopG=90,TopB=140, Bright=1.5,Expo=-0.20,Shad=0.08,
+        EnvD=0.06,EnvS=0.20,
+        BI=0.12,BS=3000,BT=0.70,
+        Br=-0.25,Co=0.50,Sa=-0.35,
+        TR=80,TG=100,TB=180,
+        DF=0.30,DD=8,DR=6,DN=0.60,
+        SRI=0.004,SRS=0.05, MB=false,
+    },
+    ["Glossy"] = {
+        AmbR=40,AmbG=42,AmbB=48, OutR=55,OutG=58,OutB=70,
+        TopR=255,TopG=255,TopB=255, Bright=7.5,Expo=1.0,Shad=0.03,
+        EnvD=0.12,EnvS=0.85,
+        BI=0.12,BS=3500,BT=0.78,
+        Br=0.22,Co=0.50,Sa=0.45,
+        TR=230,TG=235,TB=255,
+        DF=0.05,DD=25,DR=22,DN=0.15,
+        SRI=0.02,SRS=0.20, MB=true,
+    },
+}
+
+local PresetOrder = {
+    "Rainy Depression","Soft Sunset RTX","Basic RTX","HD Textures",
+    "Summer","Autumn","Night","Glossy",
+}
+
+-- ═══════════════════════════════════════════
+--  SHADER ENGINE
+-- ═══════════════════════════════════════════
+local FX    = {}
+local MB_C  = nil   -- motion blur connection
+
+local function ClearFX()
+    if MB_C then MB_C:Disconnect(); MB_C = nil end
+    for _, v in pairs(FX) do
+        pcall(function() v:Destroy() end)
+    end
+    FX = {}
+end
+
+local function ResetLighting()
+    Lighting.Ambient               = Color3.fromRGB(127,127,127)
+    Lighting.Brightness            = 2
+    Lighting.ColorShift_Bottom     = Color3.fromRGB(0,0,0)
+    Lighting.ColorShift_Top        = Color3.fromRGB(0,0,0)
+    Lighting.EnvironmentDiffuseScale  = 1
+    Lighting.EnvironmentSpecularScale = 1
+    Lighting.GlobalShadows         = true
+    Lighting.OutdoorAmbient        = Color3.fromRGB(127,127,127)
+    Lighting.ShadowSoftness        = 0.14
+    Lighting.ExposureCompensation  = 0
+end
+
+local function ApplyShader()
+    ClearFX()
+    if not S.ShaderEnabled then
+        ResetLighting()
+        return
+    end
+    local p = Presets[S.ShaderName]
+    if not p then return end
+
+    Lighting.Ambient               = Color3.fromRGB(S.Amb_R, S.Amb_G, S.Amb_B)
+    Lighting.Brightness            = S.Br
+    Lighting.ColorShift_Bottom     = Color3.fromRGB(0, 0, 0)
+    Lighting.ColorShift_Top        = Color3.fromRGB(p.TopR,p.TopG,p.TopB)
+    Lighting.EnvironmentDiffuseScale  = p.EnvD
+    Lighting.EnvironmentSpecularScale = p.EnvS
+    Lighting.GlobalShadows         = true
+    Lighting.OutdoorAmbient        = Color3.fromRGB(p.OutR,p.OutG,p.OutB)
+    Lighting.ShadowSoftness        = S.Shad
+    Lighting.GeographicLatitude    = -15.525
+    Lighting.ExposureCompensation  = S.Expo
+
+    local bl = Instance.new("BloomEffect", Lighting)
+    bl.Intensity = S.Bloom_I; bl.Size = S.Bloom_S
+    bl.Threshold = S.Bloom_T; bl.Enabled = true
+    table.insert(FX, bl)
+
+    local cc = Instance.new("ColorCorrectionEffect", Lighting)
+    cc.Brightness  = S.CC_Br; cc.Contrast  = S.CC_Co
+    cc.Saturation  = S.CC_Sa; cc.Enabled   = true
+    cc.TintColor   = Color3.fromRGB(p.TR,p.TG,p.TB)
+    table.insert(FX, cc)
+
+    local dof = Instance.new("DepthOfFieldEffect", Lighting)
+    dof.FarIntensity  = S.DOF_F; dof.FocusDistance = S.DOF_D
+    dof.InFocusRadius = S.DOF_R; dof.NearIntensity = S.DOF_N
+    dof.Enabled = true
+    table.insert(FX, dof)
+
+    local sr = Instance.new("SunRaysEffect", Lighting)
+    sr.Intensity = S.SR_I; sr.Spread = S.SR_Sp; sr.Enabled = true
+    table.insert(FX, sr)
+
+    if p.MB then
+        local cam = WS.CurrentCamera
+        local mb  = Instance.new("BlurEffect", cam)
+        table.insert(FX, mb)
+        local lv = cam.CFrame.LookVector
+        MB_C = Run.Heartbeat:Connect(function()
+            if not S.ShaderEnabled or not mb.Parent then
+                if MB_C then MB_C:Disconnect(); MB_C = nil end
+                return
+            end
+            local mag = (cam.CFrame.LookVector - lv).Magnitude
+            mb.Size   = mag * S.MB_A * S.MB_Amp / 2
+            lv        = cam.CFrame.LookVector
+        end)
+    end
+end
+
+-- ═══════════════════════════════════════════
+--  FREECAM ENGINE
+-- ═══════════════════════════════════════════
+local FC = {
+    Conn     = nil,
+    Vel      = Vector3.zero,
+    Pitch    = 0,
+    Yaw      = 0,
+    CamPos   = Vector3.new(0, 10, 0),
+    OrigType = Enum.CameraType.Custom,
+}
+
+-- JoyLayer declared here so freecam can reference it
+-- It will be assigned after GUI is built
+local JoyLayer = nil
+
+local function EnableFreecam()
+    if S.FreecamActive then return end
+    local st = Styles[S.StyleIndex]
+    S.Speed = st.V; S.FOV = st.F; S.Smooth = st.M
+
+    local cam = WS.CurrentCamera
+    FC.OrigType = cam.CameraType
+    cam.CameraType = Enum.CameraType.Scriptable
+
+    FC.CamPos = cam.CFrame.Position
+    local _, yaw, _ = cam.CFrame:ToEulerAnglesYXZ()
+    FC.Pitch = 0
+    FC.Yaw   = math.deg(yaw)
+
+    if not UIS.TouchEnabled then
+        UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
+    end
+
+    local ch = LP.Character
+    if ch then
+        local h = ch:FindFirstChild("HumanoidRootPart")
+        if h then h.Anchored = true end
+    end
+
+    FC.Conn = Run.RenderStepped:Connect(function(dt)
+        local cam2 = WS.CurrentCamera
+        if not cam2 then return end
+
+        -- Look: mouse (PC)
+        if not UIS.TouchEnabled then
+            local d = UIS:GetMouseDelta()
+            FC.Yaw   = FC.Yaw   - d.X * 0.25
+            FC.Pitch = math.clamp(FC.Pitch - d.Y * 0.25, -89, 89)
+        end
+
+        -- Look: touch pad (mobile)
+        FC.Yaw   = FC.Yaw   + TI.LookX
+        FC.Pitch = math.clamp(FC.Pitch + TI.LookY, -89, 89)
+        TI.LookX = 0; TI.LookY = 0
+
+        local rot = CFrame.Angles(0, math.rad(FC.Yaw), 0)
+                  * CFrame.Angles(math.rad(FC.Pitch), 0, 0)
+
+        -- Move: keyboard
+        local dir = Vector3.zero
+        if UIS:IsKeyDown(Enum.KeyCode.W) then dir = dir + rot.LookVector  end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then dir = dir - rot.LookVector  end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then dir = dir - rot.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + rot.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.E) then dir = dir + Vector3.new(0,1,0) end
+        if UIS:IsKeyDown(Enum.KeyCode.Q) then dir = dir - Vector3.new(0,1,0) end
+
+        -- Move: joystick (mobile)
+        if math.abs(TI.MoveX) > 0.05 or math.abs(TI.MoveZ) > 0.05 then
+            dir = dir + rot.RightVector * TI.MoveX
+                      + rot.LookVector  * (-TI.MoveZ)
+        end
+        if math.abs(TI.MoveY) > 0.05 then
+            dir = dir + Vector3.new(0, TI.MoveY, 0)
+        end
+
+        local spd = S.Speed
+        if UIS:IsKeyDown(Enum.KeyCode.LeftShift)   then spd = spd * 3    end
+        if UIS:IsKeyDown(Enum.KeyCode.LeftControl)  then spd = spd * 0.25 end
+
+        local target = dir.Magnitude > 0 and dir.Unit * spd or Vector3.zero
+        local alpha  = math.clamp(S.Smooth * 60 * dt, 0.01, 1)
+        FC.Vel = FC.Vel:Lerp(target, alpha)
+
+        FC.CamPos        = FC.CamPos + FC.Vel * dt
+        cam2.CFrame      = CFrame.new(FC.CamPos) * rot
+        cam2.FieldOfView = S.FOV
+    end)
+
+    S.FreecamActive = true
+
+    -- Show joystick if on mobile
+    if JoyLayer and UIS.TouchEnabled and S.TouchControls then
+        JoyLayer.Visible = true
+    end
+end
+
+local function DisableFreecam()
+    if not S.FreecamActive then return end
+    if FC.Conn then FC.Conn:Disconnect(); FC.Conn = nil end
+
+    if not UIS.TouchEnabled then
+        UIS.MouseBehavior = Enum.MouseBehavior.Default
+    end
+
+    local cam = WS.CurrentCamera
+    if cam then
+        cam.CameraType  = FC.OrigType
+        cam.FieldOfView = 70
+    end
+
+    local ch = LP.Character
+    if ch then
+        local h = ch:FindFirstChild("HumanoidRootPart")
+        if h then h.Anchored = false end
+    end
+
+    FC.Vel  = Vector3.zero
+    TI.MoveX = 0; TI.MoveY = 0; TI.MoveZ = 0
+    TI.LookX = 0; TI.LookY = 0
+    S.FreecamActive = false
+
+    if JoyLayer then JoyLayer.Visible = false end
+end
+
+-- ═══════════════════════════════════════════
+--  GUI HELPERS
+-- ═══════════════════════════════════════════
+local SG = Instance.new("ScreenGui")
+SG.Name           = "SudoHubV5"
+SG.ResetOnSpawn   = false
+SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+SG.IgnoreGuiInset = true
+SG.Parent         = LP:WaitForChild("PlayerGui")
+
+local function Fr(p, sz, pos, bg, n, r)
+    local f = Instance.new("Frame")
+    f.Name = n or "f"; f.Size = sz; f.Position = pos
+    f.BackgroundColor3 = bg or C.Panel; f.BorderSizePixel = 0; f.Parent = p
+    if r then Instance.new("UICorner", f).CornerRadius = UDim.new(0, r) end
+    return f
+end
+
+local function Lb(p, t, sz, pos, col, fs, bold, xa)
+    local l = Instance.new("TextLabel")
+    l.Text = t; l.Size = sz; l.Position = pos
+    l.BackgroundTransparency = 1
+    l.TextColor3    = col or C.Text
+    l.Font          = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+    l.TextSize      = fs or 13
+    l.TextXAlignment = xa or Enum.TextXAlignment.Left
+    l.Parent = p; return l
+end
+
+local function Bt(p, t, sz, pos, bg, tc, r)
+    local b = Instance.new("TextButton")
+    b.Text = t; b.Size = sz; b.Position = pos
+    b.BackgroundColor3 = bg or C.Accent
+    b.TextColor3       = tc or C.White
+    b.Font             = Enum.Font.GothamBold
+    b.TextSize         = 12
+    b.BorderSizePixel  = 0
+    b.AutoButtonColor  = false
+    b.Parent = p
+    if r then Instance.new("UICorner", b).CornerRadius = UDim.new(0, r) end
+    local origBG = bg or C.Accent
+    b.MouseEnter:Connect(function()
+        TS:Create(b, TweenInfo.new(0.12), {
+            BackgroundColor3 = origBG:Lerp(Color3.new(1,1,1), 0.15)
+        }):Play()
+    end)
+    b.MouseLeave:Connect(function()
+        TS:Create(b, TweenInfo.new(0.12), {BackgroundColor3 = origBG}):Play()
+    end)
+    return b
+end
+
+local function Sec(p, txt, y)
+    local f = Fr(p, UDim2.new(1,-16,0,24), UDim2.new(0,8,0,y), C.Surface, "SH", 6)
+    Fr(f, UDim2.new(0,3,0.5,0), UDim2.new(0,0,0.25,0), C.Accent, "bar", 2)
+    Lb(f, "   "..txt, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), C.Accent, 11, true)
+end
+
+local function Sld(p, lbl, mn, mx, def, y, dec, cb)
+    dec = dec or 2
+    local cont = Fr(p, UDim2.new(1,-16,0,50), UDim2.new(0,8,0,y), C.BG, "SL_"..lbl)
+    cont.BackgroundTransparency = 1
+    Lb(cont, lbl, UDim2.new(0.62,0,0,18), UDim2.new(0,0,0,0), C.Sub, 11)
+    local vl = Lb(cont, tostring(def),
+        UDim2.new(0.36,0,0,18), UDim2.new(0.62,0,0,0), C.Accent, 11, true,
+        Enum.TextXAlignment.Right)
+    local tr = Fr(cont, UDim2.new(1,0,0,8), UDim2.new(0,0,0,26), C.Border, "T", 4)
+    local fi = Fr(tr,  UDim2.new((def-mn)/(mx-mn),0,1,0), UDim2.new(0,0,0,0), C.Accent, "F", 4)
+    local kn = Fr(tr,  UDim2.new(0,24,0,24), UDim2.new((def-mn)/(mx-mn),-12,0.5,-12), C.Accent,"K",12)
+    Instance.new("UIStroke", kn).Thickness = 2
+
+    local function Update(x)
+        local rel = math.clamp(
+            (x - tr.AbsolutePosition.X) / math.max(tr.AbsoluteSize.X, 1), 0, 1)
+        local v = math.floor((mn + rel*(mx-mn))*(10^dec)+0.5)/(10^dec)
+        fi.Size     = UDim2.new(rel, 0, 1, 0)
+        kn.Position = UDim2.new(rel, -12, 0.5, -12)
+        vl.Text     = tostring(v)
+        if cb then cb(v) end
+    end
+
+    local drag = false
+    local function Beg(i)
+        if i.UserInputType == Enum.UserInputType.Touch
+        or i.UserInputType == Enum.UserInputType.MouseButton1 then
+            drag = true; Update(i.Position.X)
+        end
+    end
+    tr.InputBegan:Connect(Beg); kn.InputBegan:Connect(Beg)
+    UIS.InputChanged:Connect(function(i)
+        if not drag then return end
+        if i.UserInputType == Enum.UserInputType.Touch
+        or i.UserInputType == Enum.UserInputType.MouseMovement then
+            Update(i.Position.X)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.Touch
+        or i.UserInputType == Enum.UserInputType.MouseButton1 then
+            drag = false
+        end
+    end)
+end
+
+local function Drag(handle, target)
+    local on, ds, ts = false, nil, nil
+    handle.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.Touch
+        or i.UserInputType == Enum.UserInputType.MouseButton1 then
+            on = true; ds = i.Position; ts = target.Position
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if not on then return end
+        if i.UserInputType == Enum.UserInputType.Touch
+        or i.UserInputType == Enum.UserInputType.MouseMovement then
+            local d = i.Position - ds
+            target.Position = UDim2.new(
+                ts.X.Scale, ts.X.Offset + d.X,
+                ts.Y.Scale, ts.Y.Offset + d.Y)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.Touch
+        or i.UserInputType == Enum.UserInputType.MouseButton1 then
+            on = false
+        end
+    end)
+end
+
+local function TapConnect(btn, fn)
+    btn.MouseButton1Click:Connect(fn)
+    btn.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.Touch then fn() end
+    end)
+end
+
+-- ═══════════════════════════════════════════
+--  SPLASH SCREEN
+-- ═══════════════════════════════════════════
+local Splash = Fr(SG, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), C.BG, "Splash")
+Splash.ZIndex = 100
+
+local splCard = Fr(Splash, UDim2.new(0,290,0,230), UDim2.new(0.5,-145,0.5,-115), C.Panel, "Card", 20)
+splCard.ZIndex = 101
+local splStroke = Instance.new("UIStroke", splCard)
+splStroke.Color = C.Accent; splStroke.Thickness = 1.5
+
+-- Glow ring behind card
+local gRing = Fr(Splash, UDim2.new(0,320,0,260), UDim2.new(0.5,-160,0.5,-130), C.Accent, "ring", 30)
+gRing.BackgroundTransparency = 0.88; gRing.ZIndex = 100
+
+-- Logo dot
+local logoDot = Fr(splCard, UDim2.new(0,50,0,50), UDim2.new(0.5,-25,0,22), C.Accent, "ld", 25)
+logoDot.ZIndex = 102
+local logoDot2 = Fr(splCard, UDim2.new(0,68,0,68), UDim2.new(0.5,-34,0,13), C.Accent, "ld2", 34)
+logoDot2.BackgroundTransparency = 0.82; logoDot2.ZIndex = 101
+
+local splT1 = Lb(splCard, "SUDO HUB",
+    UDim2.new(1,0,0,32), UDim2.new(0,0,0,84),
+    C.White, 28, true, Enum.TextXAlignment.Center)
+splT1.ZIndex = 102
+
+local splT2 = Lb(splCard, "Made by Katsuki",
+    UDim2.new(1,0,0,22), UDim2.new(0,0,0,120),
+    C.Accent, 14, true, Enum.TextXAlignment.Center)
+splT2.ZIndex = 102
+
+local splT3 = Lb(splCard, "Freecam  ·  Shader  ·  Mobile",
+    UDim2.new(1,0,0,18), UDim2.new(0,0,0,146),
+    C.Sub, 11, false, Enum.TextXAlignment.Center)
+splT3.ZIndex = 102
+
+local splT4 = Lb(splCard, "v5.0",
+    UDim2.new(1,0,0,14), UDim2.new(0,0,0,168),
+    C.Border, 10, false, Enum.TextXAlignment.Center)
+splT4.ZIndex = 102
+
+-- Loading bar
+local lBG = Fr(splCard, UDim2.new(1,-30,0,4), UDim2.new(0,15,1,-18), C.Border, "lbg", 2)
+lBG.ZIndex = 102
+local lFG = Fr(lBG, UDim2.new(0,0,1,0), UDim2.new(0,0,0,0), C.Accent, "lfg", 2)
+lFG.ZIndex = 103
+
+-- Side glow bar
+local sideBar = Fr(Splash, UDim2.new(0,4,1,0), UDim2.new(0,0,0,0), C.Accent, "sb")
+sideBar.ZIndex = 101
+
+task.spawn(function()
+    -- Pulse logo
+    task.spawn(function()
+        while Splash and Splash.Parent and Splash.Visible do
+            TS:Create(logoDot, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                {BackgroundTransparency = 0.4}):Play()
+            task.wait(0.7)
+            if not Splash.Visible then break end
+            TS:Create(logoDot, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                {BackgroundTransparency = 0.0}):Play()
+            task.wait(0.7)
+        end
+    end)
+    -- Fill bar
+    TS:Create(lFG,   TweenInfo.new(1.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {Size = UDim2.new(1,0,1,0)}):Play()
+    TS:Create(sideBar, TweenInfo.new(1.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {BackgroundColor3 = C.Green}):Play()
+    task.wait(2.2)
+    -- Fade everything
+    for _, v in ipairs({Splash, splCard, gRing, sideBar}) do
+        TS:Create(v, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+    end
+    for _, v in ipairs(splCard:GetChildren()) do
+        if v:IsA("TextLabel") then
+            TS:Create(v, TweenInfo.new(0.4), {TextTransparency = 1, BackgroundTransparency = 1}):Play()
+        elseif v:IsA("Frame") then
+            TS:Create(v, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+        end
+    end
+    task.wait(0.45)
+    Splash.Visible = false
+end)
+
+-- ═══════════════════════════════════════════
+--  💵  TOGGLE BUTTON  (52 × 52)
+-- ═══════════════════════════════════════════
+local Toggle = Instance.new("TextButton", SG)
+Toggle.Name             = "SHToggle"
+Toggle.Size             = UDim2.new(0, 52, 0, 52)
+Toggle.Position         = UDim2.new(1, -64, 0, 56)
+Toggle.BackgroundColor3 = C.Accent
+Toggle.Text             = "SH"
+Toggle.Font             = Enum.Font.GothamBold
+Toggle.TextSize         = 14
+Toggle.TextColor3       = C.BG
+Toggle.BorderSizePixel  = 0
+Toggle.AutoButtonColor  = false
+Toggle.ZIndex           = 50
+Instance.new("UICorner", Toggle).CornerRadius = UDim.new(0, 14)
+local tgStroke = Instance.new("UIStroke", Toggle)
+tgStroke.Color = Color3.fromRGB(130,195,255); tgStroke.Thickness = 1.5
+
+Drag(Toggle, Toggle)
+
+-- Pulse while freecam active
+local pulseConn = nil
+local function StartPulse()
+    if pulseConn then return end
+    pulseConn = Run.Heartbeat:Connect(function()
+        if not S.FreecamActive then
+            TS:Create(Toggle, TweenInfo.new(0.3), {BackgroundColor3 = C.Accent}):Play()
+            pulseConn:Disconnect(); pulseConn = nil; return
+        end
+        Toggle.BackgroundColor3 = C.Accent:Lerp(C.Green, (math.sin(tick()*3)+1)/2*0.65)
+    end)
+end
+
+-- ═══════════════════════════════════════════
+--  MAIN PANEL
+-- ═══════════════════════════════════════════
+local PW, PH = 320, 580
+local Panel = Fr(SG,
+    UDim2.new(0, PW, 0, PH),
+    UDim2.new(1, -PW-8, 0, 116),
+    C.BG, "SudoPanel", 14)
+Panel.Visible          = false
+Panel.ClipsDescendants = false
+Instance.new("UIStroke", Panel).Color = C.Border
+
+-- Title bar
+local TBar = Fr(Panel, UDim2.new(1,0,0,48), UDim2.new(0,0,0,0), C.Panel, "TB", 14)
+Fr(TBar, UDim2.new(1,0,0,14), UDim2.new(0,0,1,-14), C.Panel, "sq")
+Fr(TBar, UDim2.new(0,3,0,28), UDim2.new(0,14,0,10), C.Accent, "al", 2)
+Lb(TBar, "SUDO HUB",
+    UDim2.new(0,180,0,24), UDim2.new(0,24,0,4), C.Text, 15, true)
+Lb(TBar, "Made by Katsuki  ·  v5",
+    UDim2.new(0,200,0,16), UDim2.new(0,25,0,28), C.Accent, 9, true)
+
+-- Close button — requires 2 taps to avoid accidents
+local XBtn = Bt(TBar, "✕",
+    UDim2.new(0,42,0,42), UDim2.new(1,-48,0.5,-21),
+    C.Surface, C.Sub, 10)
+XBtn.TextSize = 16
+
+local xTaps = 0
+local function FireClose()
+    xTaps = xTaps + 1
+    if xTaps >= 2 then
+        xTaps = 0
+        -- FREECAM IS NOT STOPPED — only GUI closes
+        TS:Create(Panel, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+            {Size = UDim2.new(0,PW,0,0)}):Play()
+        task.delay(0.2, function()
+            Panel.Visible = false
+            Panel.Size    = UDim2.new(0,PW,0,PH)
+        end)
+        S.PanelOpen = false
+    else
+        TS:Create(XBtn, TweenInfo.new(0.1), {BackgroundColor3 = C.Red}):Play()
+        task.delay(0.9, function()
+            xTaps = 0
+            TS:Create(XBtn, TweenInfo.new(0.2), {BackgroundColor3 = C.Surface}):Play()
+        end)
+    end
+end
+TapConnect(XBtn, FireClose)
+Drag(TBar, Panel)
+
+-- Tab bar
+local TabBar = Fr(Panel, UDim2.new(1,0,0,38), UDim2.new(0,0,0,48), C.Panel, "TabBar")
+Fr(TabBar, UDim2.new(1,0,0,1), UDim2.new(0,0,1,-1), C.Border, "ln")
+
+local TabDefs = {"📷 Cam", "🎨 Shader", "⚙️ More"}
+local TF, TB2 = {}, {}
+
+for i, nm in ipairs(TabDefs) do
+    local tw = PW / #TabDefs
+    local tb = Bt(TabBar, nm,
+        UDim2.new(0,tw,1,0), UDim2.new(0,(i-1)*tw,0,0),
+        i==1 and C.Surface or C.Panel,
+        i==1 and C.Accent or C.Sub, 0)
+    tb.TextSize = 10; TB2[i] = tb
+    local ind = Fr(tb, UDim2.new(i==1 and 1 or 0,0,0,2), UDim2.new(0.5,0,1,-2), C.Accent, "ind")
+    ind.AnchorPoint = Vector2.new(0.5, 0)
+    local cf = Fr(Panel, UDim2.new(1,0,1,-88), UDim2.new(0,0,0,86), C.BG, "TF"..i)
+    cf.Visible = (i == 1); cf.ClipsDescendants = true; TF[i] = cf
+    local function Act()
+        for j = 1, #TabDefs do
+            TF[j].Visible = (j == i)
+            TS:Create(TB2[j], TweenInfo.new(0.13), {
+                BackgroundColor3 = j==i and C.Surface or C.Panel,
+                TextColor3       = j==i and C.Accent  or C.Sub,
+            }):Play()
+            local id = TB2[j]:FindFirstChild("ind")
+            if id then
+                TS:Create(id, TweenInfo.new(0.15), {
+                    Size = j==i and UDim2.new(1,0,0,2) or UDim2.new(0,0,0,2)
+                }):Play()
+            end
+        end
+    end
+    TapConnect(tb, Act)
+end
+
+-- Status bar
+local StBar = Fr(Panel, UDim2.new(1,0,0,22), UDim2.new(0,0,1,-22), C.Panel, "St")
+Fr(StBar, UDim2.new(1,0,0,1), UDim2.new(0,0,0,0), C.Border, "tl")
+local StLbl = Lb(StBar, "  Ready",
+    UDim2.new(0.8,0,1,0), UDim2.new(0,0,0,0), C.Sub, 9)
+Lb(StBar, "Katsuki",
+    UDim2.new(0,52,1,0), UDim2.new(1,-54,0,0),
+    C.AccDk, 9, true, Enum.TextXAlignment.Right)
+
+local function Status(msg, col)
+    StLbl.Text      = "  " .. msg
+    StLbl.TextColor3 = col or C.Sub
+    task.delay(4, function()
+        if StLbl and StLbl.Parent then
+            StLbl.Text      = "  Ready"
+            StLbl.TextColor3 = C.Sub
+        end
+    end)
+end
+
+-- ═══════════════════════════════════════════
+--  TAB 1  —  CAMERA
+-- ═══════════════════════════════════════════
+local T1  = TF[1]
+local SC1 = Instance.new("ScrollingFrame", T1)
+SC1.Size                 = UDim2.new(1,0,1,0)
+SC1.CanvasSize           = UDim2.new(0,0,0,730)
+SC1.ScrollBarThickness   = 4
+SC1.ScrollBarImageColor3 = C.Accent
+SC1.BackgroundTransparency = 1
+SC1.BorderSizePixel      = 0
+
+-- Freecam toggle row
+Sec(SC1, "FREECAM", 8)
+local fcRow = Fr(SC1, UDim2.new(1,-16,0,58), UDim2.new(0,8,0,40), C.Card, "fcRow", 10)
+local fcDot = Fr(fcRow, UDim2.new(0,12,0,12), UDim2.new(0,12,0.5,-6), C.Red, "d", 6)
+local fcLbl = Lb(fcRow, "OFF",
+    UDim2.new(0.48,0,1,0), UDim2.new(0,34,0,0), C.Text, 14, true)
+local fcBtn = Bt(fcRow, "▶  START",
+    UDim2.new(0,108,0,36), UDim2.new(1,-118,0.5,-18), C.Green, C.BG, 10)
+fcBtn.TextSize = 13
+
+-- RefFC and TapFC defined AFTER StartPulse is defined (already is)
+local function RefFC()
+    if S.FreecamActive then
+        fcLbl.Text = "ON  ✓"; fcLbl.TextColor3 = C.Green
+        fcBtn.Text = "■  STOP"; fcBtn.BackgroundColor3 = C.Red
+        fcDot.BackgroundColor3 = C.Green
+        StartPulse()
+    else
+        fcLbl.Text = "OFF"; fcLbl.TextColor3 = C.Text
+        fcBtn.Text = "▶  START"; fcBtn.BackgroundColor3 = C.Green
+        fcDot.BackgroundColor3 = C.Red
+        Toggle.BackgroundColor3 = C.Accent
+    end
+end
+
+local function TapFC()
+    if S.FreecamActive then
+        DisableFreecam()
+        Status("Freecam stopped", C.Red)
+    else
+        EnableFreecam()
+        Status("Freecam  ·  " .. Styles[S.StyleIndex].N, C.Green)
+    end
+    RefFC()
+end
+TapConnect(fcBtn, TapFC)
+
+-- Style scroll list
+Sec(SC1, "STYLE  (20 presets)", 110)
+local SS = Instance.new("ScrollingFrame", SC1)
+SS.Size                 = UDim2.new(1,-16,0,178)
+SS.Position             = UDim2.new(0,8,0,142)
+SS.CanvasSize           = UDim2.new(0,0,0,#Styles*40+4)
+SS.ScrollBarThickness   = 3
+SS.ScrollBarImageColor3 = C.Accent
+SS.BackgroundColor3     = C.Card
+SS.BorderSizePixel      = 0
+Instance.new("UICorner", SS).CornerRadius = UDim.new(0, 8)
+Instance.new("UIListLayout", SS).Padding  = UDim.new(0, 2)
+
+local SBs = {}
+for i, st in ipairs(Styles) do
+    local row = Bt(SS, st.N.."     FOV:"..st.F,
+        UDim2.new(1,-8,0,34), UDim2.new(0,4,0,0),
+        i==1 and C.AccDk or C.Card,
+        i==1 and C.White or C.Sub, 6)
+    row.TextXAlignment = Enum.TextXAlignment.Left
+    row.TextSize = 11; row.LayoutOrder = i
+    Instance.new("UIPadding", row).PaddingLeft = UDim.new(0,10)
+    table.insert(SBs, row)
+    local function Pick()
+        for j, rb in pairs(SBs) do
+            TS:Create(rb, TweenInfo.new(0.12), {
+                BackgroundColor3 = j==i and C.AccDk or C.Card,
+                TextColor3       = j==i and C.White or C.Sub,
+            }):Play()
+        end
+        S.StyleIndex = i; S.Speed = st.V; S.FOV = st.F; S.Smooth = st.M
+        Status("Style: " .. st.N, C.Accent)
+    end
+    TapConnect(row, Pick)
+end
+
+-- Sliders
+Sec(SC1, "PARAMETERS", 332)
+Sld(SC1, "Speed",      1,   300, 30,   364, 0, function(v) S.Speed = v end)
+Sld(SC1, "Field of View", 10, 130, 70, 422, 0, function(v)
+    S.FOV = v
+    if S.FreecamActive then WS.CurrentCamera.FieldOfView = v end
+end)
+Sld(SC1, "Smoothing",  0.01, 0.99, 0.12, 480, 2, function(v) S.Smooth = v end)
+
+-- Touch controls toggle
+Sec(SC1, "TOUCH CONTROLS", 542)
+local tcRow  = Fr(SC1, UDim2.new(1,-16,0,44), UDim2.new(0,8,0,574), C.Card, "tc", 8)
+Lb(tcRow, "On-Screen Joystick",
+    UDim2.new(0.65,0,1,0), UDim2.new(0,12,0,0), C.Text, 12, true)
+local tcPill = Fr(tcRow, UDim2.new(0,54,0,26), UDim2.new(1,-66,0.5,-13), C.Green, "Pill", 13)
+local tcCirc = Fr(tcPill, UDim2.new(0,20,0,20), UDim2.new(1,-23,0.5,-10), C.White, "Circ", 10)
+local tcOn   = true
+local function TogTC()
+    tcOn = not tcOn; S.TouchControls = tcOn
+    TS:Create(tcPill, TweenInfo.new(0.2), {BackgroundColor3 = tcOn and C.Green or C.Border}):Play()
+    TS:Create(tcCirc, TweenInfo.new(0.2), {
+        Position = tcOn and UDim2.new(1,-23,0.5,-10) or UDim2.new(0,3,0.5,-10)
+    }):Play()
+    if JoyLayer then
+        JoyLayer.Visible = tcOn and S.FreecamActive
+    end
+end
+tcPill.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.Touch
+    or i.UserInputType == Enum.UserInputType.MouseButton1 then TogTC() end
+end)
+
+-- ═══════════════════════════════════════════
+--  TAB 2  —  SHADER
+-- ═══════════════════════════════════════════
+local T2  = TF[2]
+local SC2 = Instance.new("ScrollingFrame", T2)
+SC2.Size                 = UDim2.new(1,0,1,0)
+SC2.ScrollBarThickness   = 4
+SC2.ScrollBarImageColor3 = C.Accent
+SC2.BackgroundTransparency = 1
+SC2.BorderSizePixel      = 0
+
+-- Shader toggle row
+Sec(SC2, "SHADER", 8)
+local shRow = Fr(SC2, UDim2.new(1,-16,0,58), UDim2.new(0,8,0,40), C.Card, "shRow", 10)
+local shDot = Fr(shRow, UDim2.new(0,12,0,12), UDim2.new(0,12,0.5,-6), C.Red, "d", 6)
+local shLbl = Lb(shRow, "OFF",
+    UDim2.new(0.42,0,1,0), UDim2.new(0,34,0,0), C.Text, 14, true)
+local shBtn = Bt(shRow, "ENABLE",
+    UDim2.new(0,100,0,36), UDim2.new(1,-112,0.5,-18), C.Green, C.BG, 10)
+shBtn.TextSize = 13
+
+local function RefSH()
+    if S.ShaderEnabled then
+        shLbl.Text = "ON  ✓"; shLbl.TextColor3 = C.Green
+        shBtn.Text = "DISABLE"; shBtn.BackgroundColor3 = C.Red
+        shDot.BackgroundColor3 = C.Green
+    else
+        shLbl.Text = "OFF"; shLbl.TextColor3 = C.Text
+        shBtn.Text = "ENABLE"; shBtn.BackgroundColor3 = C.Green
+        shDot.BackgroundColor3 = C.Red
+    end
+end
+
+local function TapSH()
+    S.ShaderEnabled = not S.ShaderEnabled
+    ApplyShader(); RefSH()
+    Status(S.ShaderEnabled and ("Shader ON · "..S.ShaderName) or "Shader OFF",
+        S.ShaderEnabled and C.Green or C.Red)
+end
+TapConnect(shBtn, TapSH)
+
+-- Reset buttons
+local rstBtn = Bt(SC2, "RESET ALL SHADERS",
+    UDim2.new(1,-16,0,36), UDim2.new(0,8,0,106), C.Surface, C.Red, 8)
+rstBtn.TextSize = 11
+TapConnect(rstBtn, function()
+    S.ShaderEnabled = false; ClearFX(); ResetLighting(); RefSH()
+    Status("All shaders reset", C.Orange)
+end)
+
+local rtBtn = Bt(SC2, "RESET TEXTURES",
+    UDim2.new(1,-16,0,36), UDim2.new(0,8,0,150), C.Surface, C.Orange, 8)
+rtBtn.TextSize = 11
+TapConnect(rtBtn, function()
+    for _, v in ipairs(WS:GetDescendants()) do
+        if v:IsA("SpecialMesh") then
+            pcall(function() v.TextureId = "" end)
+        end
+    end
+    Status("Textures reset", C.Orange)
+end)
+
+-- Preset grid (2 columns)
+Sec(SC2, "PRESETS", 196)
+local pMap  = {}
+local gridY = 228
+local bw    = math.floor((PW - 32) / 2)
+
+for idx, pName in ipairs(PresetOrder) do
+    local col = (idx-1) % 2
+    local row = math.floor((idx-1) / 2)
+    local pb  = Bt(SC2, pName,
+        UDim2.new(0,bw,0,36),
+        UDim2.new(0, 8+col*(bw+8), 0, gridY+row*44),
+        S.ShaderName == pName and C.Accent or C.Card,
+        S.ShaderName == pName and C.BG     or C.Text, 8)
+    pb.TextSize = 10; pb.TextWrapped = true
+    table.insert(pMap, {b = pb, n = pName})
+
+    local function Pick()
+        S.ShaderName = pName
+        local pr = Presets[pName]
+        if pr then
+            S.Bloom_I = pr.BI  or S.Bloom_I; S.Bloom_S = pr.BS  or S.Bloom_S
+            S.Bloom_T = pr.BT  or S.Bloom_T; S.CC_Br   = pr.Br  or S.CC_Br
+            S.CC_Co   = pr.Co  or S.CC_Co;   S.CC_Sa   = pr.Sa  or S.CC_Sa
+            S.DOF_F   = pr.DF  or S.DOF_F;   S.DOF_D   = pr.DD  or S.DOF_D
+            S.DOF_R   = pr.DR  or S.DOF_R;   S.DOF_N   = pr.DN  or S.DOF_N
+            S.SR_I    = pr.SRI or S.SR_I;    S.SR_Sp   = pr.SRS or S.SR_Sp
+            S.Amb_R   = pr.AmbR or S.Amb_R;  S.Amb_G   = pr.AmbG or S.Amb_G
+            S.Amb_B   = pr.AmbB or S.Amb_B;  S.Br      = pr.Bright or S.Br
+            S.Expo    = pr.Expo or S.Expo;    S.Shad    = pr.Shad or S.Shad
+        end
+        for _, e in pairs(pMap) do
+            TS:Create(e.b, TweenInfo.new(0.13), {
+                BackgroundColor3 = e.n==pName and C.Accent or C.Card,
+                TextColor3       = e.n==pName and C.BG     or C.Text,
+            }):Play()
+        end
+        if S.ShaderEnabled then ApplyShader() end
+        Status("Preset: " .. pName, C.Accent)
+    end
+    TapConnect(pb, Pick)
+end
+
+local nRows = math.ceil(#PresetOrder / 2)
+local slY   = gridY + nRows*44 + 16
+
+Sec(SC2, "BLOOM", slY)
+Sld(SC2,"Intensity", 0,2,    0.04, slY+32,  2, function(v) S.Bloom_I=v; if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC2,"Size",      0,5000, 1900, slY+90,  0, function(v) S.Bloom_S=v; if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC2,"Threshold", 0,1,    0.9,  slY+148, 2, function(v) S.Bloom_T=v; if S.ShaderEnabled then ApplyShader() end end)
+
+local ccY = slY + 210
+Sec(SC2, "COLOR CORRECTION", ccY)
+Sld(SC2,"Brightness",-1,1,0.10,ccY+32, 2,function(v) S.CC_Br=v; if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC2,"Contrast",  -1,1,0.30,ccY+90, 2,function(v) S.CC_Co=v; if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC2,"Saturation",-1,1,0.10,ccY+148,2,function(v) S.CC_Sa=v; if S.ShaderEnabled then ApplyShader() end end)
+
+local dfY = ccY + 210
+Sec(SC2, "DEPTH OF FIELD", dfY)
+Sld(SC2,"Far Intensity",  0,1,   0.08,dfY+32, 2,function(v) S.DOF_F=v; if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC2,"Focus Distance", 0,100, 20,  dfY+90, 1,function(v) S.DOF_D=v; if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC2,"In-Focus Radius",0,100, 18,  dfY+148,1,function(v) S.DOF_R=v; if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC2,"Near Intensity", 0,1,   0.20,dfY+206,2,function(v) S.DOF_N=v; if S.ShaderEnabled then ApplyShader() end end)
+
+local srY = dfY + 268
+Sec(SC2, "SUN RAYS", srY)
+Sld(SC2,"Intensity",0,0.5,0.01,srY+32,3,function(v) S.SR_I=v;  if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC2,"Spread",   0,1,  0.14,srY+90,2,function(v) S.SR_Sp=v; if S.ShaderEnabled then ApplyShader() end end)
+
+SC2.CanvasSize = UDim2.new(0,0,0,srY+152)
+
+-- ═══════════════════════════════════════════
+--  TAB 3  —  MORE
+-- ═══════════════════════════════════════════
+local T3  = TF[3]
+local SC3 = Instance.new("ScrollingFrame", T3)
+SC3.Size                 = UDim2.new(1,0,1,0)
+SC3.CanvasSize           = UDim2.new(0,0,0,600)
+SC3.ScrollBarThickness   = 4
+SC3.ScrollBarImageColor3 = C.Accent
+SC3.BackgroundTransparency = 1
+SC3.BorderSizePixel      = 0
+
+Sec(SC3, "ADVANCED LIGHTING", 8)
+Sld(SC3,"Exposure",       -2,2,   0.70,40, 2,function(v) S.Expo=v;  if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC3,"Shadow Softness", 0,1,   0.04,98, 2,function(v) S.Shad=v;  if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC3,"Scene Brightness",0,10,  6.0, 156,2,function(v) S.Br=v;    if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC3,"Ambient R",       0,255, 33,  214,0,function(v) S.Amb_R=v; if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC3,"Ambient G",       0,255, 33,  272,0,function(v) S.Amb_G=v; if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC3,"Ambient B",       0,255, 33,  330,0,function(v) S.Amb_B=v; if S.ShaderEnabled then ApplyShader() end end)
+
+Sec(SC3, "MOTION BLUR", 392)
+Sld(SC3,"Blur Amount", 0,30,8,424,1,function(v) S.MB_A=v;   if S.ShaderEnabled then ApplyShader() end end)
+Sld(SC3,"Amplifier",   1,20,4,482,1,function(v) S.MB_Amp=v; if S.ShaderEnabled then ApplyShader() end end)
+
+local inf = Fr(SC3, UDim2.new(1,-16,0,76), UDim2.new(0,8,0,544), C.Card, "inf", 10)
+local il  = Instance.new("TextLabel", inf)
+il.Size = UDim2.new(1,-16,1,0); il.Position = UDim2.new(0,8,0,0)
+il.BackgroundTransparency = 1; il.TextColor3 = C.Sub
+il.Font = Enum.Font.Gotham; il.TextSize = 10
+il.TextXAlignment = Enum.TextXAlignment.Left
+il.TextYAlignment = Enum.TextYAlignment.Center
+il.Text = "Tap 💵 SH to open/close panel\nFreecam stays ON when panel is closed\nTap ✕ TWICE to close panel"
+
+-- ═══════════════════════════════════════════
+--  PANEL OPEN / CLOSE  (does NOT touch freecam)
+-- ═══════════════════════════════════════════
+local function OpenPanel()
+    Panel.Visible = true
+    Panel.Size    = UDim2.new(0,PW,0,0)
+    TS:Create(Panel,
+        TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        {Size = UDim2.new(0,PW,0,PH)}):Play()
+    S.PanelOpen = true
+end
+
+local function ClosePanel()
+    -- FREECAM KEEPS RUNNING
+    TS:Create(Panel,
+        TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+        {Size = UDim2.new(0,PW,0,0)}):Play()
+    task.delay(0.2, function()
+        Panel.Visible = false
+        Panel.Size    = UDim2.new(0,PW,0,PH)
+    end)
+    S.PanelOpen = false
+end
+
+TapConnect(Toggle, function()
+    if S.PanelOpen then ClosePanel() else OpenPanel() end
+end)
+
+-- ═══════════════════════════════════════════
+--  MOBILE JOYSTICK + LOOK PAD
+--  Built AFTER all other GUI so JoyLayer
+--  can be assigned to the variable at the top
+-- ═══════════════════════════════════════════
+local JL = Fr(SG, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), C.BG, "JoyLayer")
+JL.BackgroundTransparency = 1
+JL.ZIndex   = 10
+JL.Visible  = false
+JoyLayer    = JL          -- assign to upvalue so freecam engine can see it
+
+local JOY_R     = 46
+local LOOK_SENS = 0.30
+
+-- Joystick base
+local JBase = Fr(JL, UDim2.new(0,110,0,110), UDim2.new(0,16,1,-136), Color3.fromRGB(18,22,38), "JB", 55)
+JBase.AnchorPoint = Vector2.new(0,1)
+JBase.ZIndex = 11; JBase.BackgroundTransparency = 0.30
+local jbS = Instance.new("UIStroke", JBase)
+jbS.Color = C.Accent; jbS.Thickness = 1.5; jbS.Transparency = 0.4
+
+-- Knob
+local JKnob = Fr(JBase, UDim2.new(0,42,0,42), UDim2.new(0.5,-21,0.5,-21), C.Accent, "JK", 21)
+JKnob.ZIndex = 12
+Instance.new("UIStroke", JKnob).Thickness = 2
+
+-- Arrows
+for _, a in pairs({{"▲",0,-40},{"▼",0,40},{"◀",-40,0},{"▶",40,0}}) do
+    local al = Instance.new("TextLabel", JBase)
+    al.Text = a[1]; al.Size = UDim2.new(0,20,0,20)
+    al.Position = UDim2.new(0.5,a[2]-10,0.5,a[3]-10)
+    al.BackgroundTransparency = 1; al.TextColor3 = C.Accent
+    al.TextTransparency = 0.5; al.Font = Enum.Font.GothamBold
+    al.TextSize = 12; al.ZIndex = 11
+end
+
+-- Up / Down hold buttons
+local function UDBtn(emoji, yOff, dir)
+    local b = Instance.new("TextButton", JL)
+    b.Text = emoji; b.Size = UDim2.new(0,50,0,50)
+    b.Position = UDim2.new(0,138,1,yOff); b.AnchorPoint = Vector2.new(0,1)
+    b.BackgroundColor3 = Color3.fromRGB(18,22,38); b.BackgroundTransparency = 0.30
+    b.TextColor3 = C.Accent; b.Font = Enum.Font.GothamBold
+    b.TextSize = 20; b.BorderSizePixel = 0; b.AutoButtonColor = false; b.ZIndex = 11
+    Instance.new("UICorner", b).CornerRadius = UDim.new(1,0)
+    local s = Instance.new("UIStroke", b)
+    s.Color = C.Accent; s.Thickness = 1.5; s.Transparency = 0.4
+    b.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.Touch
+        or i.UserInputType==Enum.UserInputType.MouseButton1 then
+            TI.MoveY = dir
+            TS:Create(b,TweenInfo.new(0.1),{BackgroundColor3=C.AccDk}):Play()
+        end
+    end)
+    b.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.Touch
+        or i.UserInputType==Enum.UserInputType.MouseButton1 then
+            TI.MoveY = 0
+            TS:Create(b,TweenInfo.new(0.1),{BackgroundColor3=Color3.fromRGB(18,22,38)}):Play()
+        end
+    end)
+end
+UDBtn("▲", -104, 1)
+UDBtn("▼",  -48,-1)
+
+-- Labels
+local jLbl = Lb(JL,"MOVE",UDim2.new(0,110,0,14),UDim2.new(0,16,1,-150),C.Accent,9,true,Enum.TextXAlignment.Center)
+jLbl.AnchorPoint=Vector2.new(0,1); jLbl.BackgroundTransparency=1; jLbl.TextTransparency=0.4; jLbl.ZIndex=11
+
+-- Look pad
+local LPad = Fr(JL, UDim2.new(0,170,0,170), UDim2.new(1,-186,1,-186), Color3.fromRGB(18,22,38), "LP", 16)
+LPad.AnchorPoint = Vector2.new(1,1); LPad.ZIndex = 11; LPad.BackgroundTransparency = 0.45
+local lpS = Instance.new("UIStroke", LPad)
+lpS.Color = C.Accent; lpS.Thickness = 1; lpS.Transparency = 0.6
+
+-- Crosshair
+local function CHLine(w, h, ox, oy)
+    local l = Fr(LPad, UDim2.new(0,w,0,h), UDim2.new(0.5,ox,0.5,oy), C.Accent, "cl")
+    l.BackgroundTransparency = 0.65; l.ZIndex = 12
+end
+CHLine(1,28,0,-14); CHLine(28,1,-14,0)
+local lpDot = Fr(LPad, UDim2.new(0,8,0,8), UDim2.new(0.5,-4,0.5,-4), C.Accent, "lpd", 4)
+lpDot.ZIndex = 12; lpDot.BackgroundTransparency = 0.3
+
+local lpLbl = Lb(JL,"LOOK",UDim2.new(0,170,0,14),UDim2.new(1,-186,1,-188),C.Accent,9,true,Enum.TextXAlignment.Center)
+lpLbl.AnchorPoint=Vector2.new(1,1); lpLbl.BackgroundTransparency=1; lpLbl.TextTransparency=0.4; lpLbl.ZIndex=11
+
+-- ── Touch routing ──────────────────────────
+local jTouchId  = nil
+local jOrigin   = Vector2.zero
+local lTouchId  = nil
+local lLastPos  = Vector2.zero
+
+local function InFrame(f, pos)
+    local ap = f.AbsolutePosition; local as = f.AbsoluteSize
+    return pos.X>=ap.X and pos.X<=ap.X+as.X and pos.Y>=ap.Y and pos.Y<=ap.Y+as.Y
+end
+
+local function JoyUpdate(pos)
+    local centre = JBase.AbsolutePosition + JBase.AbsoluteSize/2
+    local delta  = pos - centre
+    local mag    = delta.Magnitude
+    local clamp  = mag > JOY_R and delta.Unit*JOY_R or delta
+    JKnob.Position = UDim2.new(0.5,clamp.X-21,0.5,clamp.Y-21)
+    if mag > 6 then
+        local n = delta.Unit * math.min(mag/JOY_R,1)
+        TI.MoveX = n.X; TI.MoveZ = n.Y
+    else
+        TI.MoveX = 0; TI.MoveZ = 0
+    end
+end
+
+local function JoyReset()
+    jTouchId = nil; TI.MoveX = 0; TI.MoveZ = 0
+    JKnob.Position = UDim2.new(0.5,-21,0.5,-21)
+end
+
+UIS.TouchStarted:Connect(function(inp, gp)
+    if gp or not S.FreecamActive then return end
+    local pos = Vector2.new(inp.Position.X, inp.Position.Y)
+    local sw  = SG.AbsoluteSize.X
+    if jTouchId == nil and (InFrame(JBase,pos) or pos.X < sw*0.5) then
+        jTouchId = inp; JoyUpdate(pos)
+    elseif lTouchId == nil and (InFrame(LPad,pos) or pos.X >= sw*0.5) then
+        lTouchId = inp; lLastPos = pos
+    end
+end)
+
+UIS.TouchMoved:Connect(function(inp, gp)
+    if gp or not S.FreecamActive then return end
+    local pos = Vector2.new(inp.Position.X, inp.Position.Y)
+    if jTouchId == inp then JoyUpdate(pos) end
+    if lTouchId == inp then
+        local d = pos - lLastPos
+        TI.LookX = -d.X * LOOK_SENS
+        TI.LookY = -d.Y * LOOK_SENS
+        lLastPos = pos
+    end
+end)
+
+UIS.TouchEnded:Connect(function(inp, gp)
+    if gp then return end
+    if jTouchId == inp then JoyReset() end
+    if lTouchId == inp then lTouchId = nil end
+end)
+
+-- ═══════════════════════════════════════════
+--  RESPAWN / TELEPORT SAFETY
+-- ═══════════════════════════════════════════
+LP.CharacterAdded:Connect(function(ch)
+    task.wait(1)
+    if S.FreecamActive then
+        local h = ch:WaitForChild("HumanoidRootPart", 5)
+        if h then h.Anchored = true end
+    end
+    if S.ShaderEnabled then ApplyShader() end
+end)
+
+WS.Changed:Connect(function(prop)
+    if prop == "CurrentCamera" and S.ShaderEnabled then
+        ApplyShader()
+    end
+end)
+
+-- ═══════════════════════════════════════════
+--  DONE
+-- ═══════════════════════════════════════════
+print("╔══════════════════════════════════╗")
+print("║   SUDO HUB v5  ·  by Katsuki    ║")
+print("║  Tap the SH button (top right)  ║")
+print("╚══════════════════════════════════╝")
+Status("Sudo Hub v5  ·  Made by Katsuki", C.Green)
