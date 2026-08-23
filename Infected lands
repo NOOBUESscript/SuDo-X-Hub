@@ -1,0 +1,1845 @@
+--[[
+    ╔══════════════════════════════════════════════════╗
+    ║       PHANTOM PROTOCOL X — INFECTED LAND         ║
+    ║         Built on Protocol X Hub v4.0             ║
+    ║         Game: Infected Land (Aug 2026)           ║
+    ╚══════════════════════════════════════════════════╝
+]]
+
+-- ================================================================
+-- LOAD LIBRARY (Protocol X Hub UI v4.0)
+-- ================================================================
+local Library = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/NOOBUESscript/PHANTOM-PROTOCOL-X-HUB-/main/LIBRARY%20UI%20V5",
+    true
+))()
+
+-- ================================================================
+-- SERVICES
+-- ================================================================
+local Players        = game:GetService("Players")
+local RunService     = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService   = game:GetService("TweenService")
+local LocalPlayer    = Players.LocalPlayer
+local Camera         = workspace.CurrentCamera
+
+-- ================================================================
+-- WINDOW SETUP
+-- ================================================================
+local Win = Library:Window({
+    Title    = "Phantom Protocol X",
+    SubTitle = "Infected Land | Aug 2026",
+    Logo     = "rbxassetid://87463776300371",
+    FloatingButton = true,
+    Loading  = { Duration = 4 },
+    KeySystem = {
+        Keys     = { "PHANTOM-2011", "PXH-2011", "IL-2011-FREE" },
+        KeyLink  = "https://discord.gg/phantomprotocol",
+        SaveKey  = true,
+        MaxAttempts = 5,
+        Note     = "Get your key from our Discord!",
+    },
+})
+
+-- ================================================================
+-- TABS
+-- ================================================================
+local TabESP     = Win:Tab({ Title = "ESP",     Icon = "rbxassetid://87463776300371" })
+local TabAimbot  = Win:Tab({ Title = "Aimbot",  Icon = "rbxassetid://87463776300371" })
+local TabPlayer  = Win:Tab({ Title = "Player",  Icon = "rbxassetid://87463776300371" })
+local TabItems   = Win:Tab({ Title = "Items",   Icon = "rbxassetid://87463776300371" })
+local TabWorld   = Win:Tab({ Title = "World",   Icon = "rbxassetid://87463776300371" })
+local TabMisc    = Win:Tab({ Title = "Misc",    Icon = "rbxassetid://87463776300371" })
+
+-- ================================================================
+-- SHARED STATE
+-- ================================================================
+local Flags = Library.Flags
+
+-- ESP storage
+local ESPObjects    = {}   -- [character] = { box, name, distance, highlight }
+local ZombieESP     = {}   -- [zombie model] = { highlight, billboard }
+local LootESP       = {}   -- [tool part] = billboard
+
+-- Aimbot
+local AimbotTarget  = nil
+
+-- Loops
+local Connections   = {}
+
+local function AddConn(c) table.insert(Connections, c) end
+local function ClearConns()
+    for _, c in ipairs(Connections) do
+        if typeof(c) == "RBXScriptConnection" then c:Disconnect() end
+    end
+    Connections = {}
+end
+
+-- ================================================================
+-- UTILITY FUNCTIONS
+-- ================================================================
+local function GetCharacter(player)
+    return player and player.Character
+end
+
+local function GetHRP(player)
+    local char = GetCharacter(player)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function GetHead(player)
+    local char = GetCharacter(player)
+    return char and char:FindFirstChild("Head")
+end
+
+local function IsAlive(player)
+    local char = GetCharacter(player)
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    return hum and hum.Health > 0
+end
+
+local function WorldToViewport(pos)
+    local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
+    return Vector2.new(screenPos.X, screenPos.Y), screenPos.Z, onScreen
+end
+
+local function Distance(pos)
+    local hrp = GetHRP(LocalPlayer)
+    if not hrp then return 0 end
+    return math.floor((hrp.Position - pos).Magnitude)
+end
+
+local function RoundedBox(drawing, x, y, w, h, thickness, color, transparency)
+    drawing.Visible    = true
+    drawing.Position   = Vector2.new(x, y)
+    drawing.Size       = Vector2.new(w, h)
+    drawing.Thickness  = thickness
+    drawing.Color      = color
+    drawing.Transparency = transparency or 1
+end
+
+-- ================================================================
+-- ██████╗ ██████╗     ███████╗███████╗██████╗
+-- ██╔════╝██╔════╝     ██╔════╝██╔════╝██╔══██╗
+-- █████╗  ╚█████╗█████╗█████╗  ███████╗██████╔╝
+-- ██╔══╝   ╚═══██╝╚════╝██╔══╝  ╚════██║██╔═══╝
+-- ███████╗██████╔╝      ███████╗███████║██║
+-- ╚══════╝╚═════╝       ╚══════╝╚══════╝╚═╝
+-- ================================================================
+
+-- ── ESP CONFIG STATE ──
+local ESPConfig = {
+    -- Player ESP
+    PlayerEnabled    = false,
+    PlayerBox        = true,
+    PlayerName       = true,
+    PlayerDistance   = true,
+    PlayerHighlight  = true,
+    PlayerBoxColor   = Color3.fromRGB(255, 50, 50),
+    PlayerNameColor  = Color3.fromRGB(255, 255, 255),
+    PlayerDistColor  = Color3.fromRGB(255, 215, 0),
+    PlayerFillColor  = Color3.fromRGB(255, 0, 0),
+    PlayerFillTrans  = 0.85,
+    PlayerOutlineColor = Color3.fromRGB(0, 0, 0),
+    PlayerMaxDist    = 500,
+    PlayerTeamCheck  = false,
+
+    -- Zombie ESP
+    ZombieEnabled    = false,
+    ZombieHighlight  = true,
+    ZombieName       = true,
+    ZombieDistance   = true,
+    ZombieColor      = Color3.fromRGB(180, 0, 255),
+    ZombieFillColor  = Color3.fromRGB(100, 0, 200),
+    ZombieFillTrans  = 0.85,
+    ZombieMaxDist    = 300,
+
+    -- Loot ESP
+    LootEnabled      = false,
+    LootMaxDist      = 100,
+    LootColor        = Color3.fromRGB(0, 255, 150),
+    LootTextSize     = 13,
+
+    -- Weapon loot filter
+    LootWeapons      = true,
+    LootMedical      = true,
+    LootFood         = true,
+    LootAmmo         = true,
+    LootBackpacks    = true,
+    LootKeys         = true,
+    LootAll          = false,
+}
+
+-- ── DRAWING HELPERS ──
+local function NewDrawing(type_, props)
+    local d = Drawing.new(type_)
+    for k, v in pairs(props or {}) do d[k] = v end
+    return d
+end
+
+-- ── PLAYER ESP ──
+local function CreatePlayerESP(player)
+    if player == LocalPlayer then return end
+    if ESPObjects[player] then return end
+
+    local box = NewDrawing("Square", {
+        Visible = false, Filled = false,
+        Color = ESPConfig.PlayerBoxColor,
+        Thickness = 1.5, Transparency = 1,
+    })
+    local boxFill = NewDrawing("Square", {
+        Visible = false, Filled = true,
+        Color = ESPConfig.PlayerFillColor,
+        Thickness = 1, Transparency = ESPConfig.PlayerFillTrans,
+    })
+    local boxOutline = NewDrawing("Square", {
+        Visible = false, Filled = false,
+        Color = ESPConfig.PlayerOutlineColor,
+        Thickness = 3, Transparency = 1,
+    })
+    local nameLabel = NewDrawing("Text", {
+        Visible = false, Center = true,
+        Color = ESPConfig.PlayerNameColor,
+        Size = 13, Outline = true,
+        OutlineColor = Color3.new(0,0,0),
+        Font = Drawing.Fonts.UI,
+    })
+    local distLabel = NewDrawing("Text", {
+        Visible = false, Center = true,
+        Color = ESPConfig.PlayerDistColor,
+        Size = 11, Outline = true,
+        OutlineColor = Color3.new(0,0,0),
+        Font = Drawing.Fonts.UI,
+    })
+    local healthBar = NewDrawing("Square", {
+        Visible = false, Filled = true,
+        Color = Color3.fromRGB(50, 200, 50),
+        Thickness = 1, Transparency = 1,
+    })
+    local healthBg = NewDrawing("Square", {
+        Visible = false, Filled = true,
+        Color = Color3.fromRGB(30, 30, 30),
+        Thickness = 1, Transparency = 1,
+    })
+
+    -- Highlight
+    local highlight = Instance.new("SelectionBox")
+    highlight.LineThickness = 0.05
+    highlight.Color3 = ESPConfig.PlayerBoxColor
+    highlight.SurfaceColor3 = ESPConfig.PlayerFillColor
+    highlight.SurfaceTransparency = ESPConfig.PlayerFillTrans
+    highlight.Parent = Camera
+
+    ESPObjects[player] = {
+        box = box, boxFill = boxFill, boxOutline = boxOutline,
+        nameLabel = nameLabel, distLabel = distLabel,
+        healthBar = healthBar, healthBg = healthBg,
+        highlight = highlight,
+    }
+end
+
+local function RemovePlayerESP(player)
+    local obj = ESPObjects[player]
+    if not obj then return end
+    for _, d in pairs(obj) do
+        if typeof(d) == "Instance" then
+            d:Destroy()
+        elseif type(d) == "userdata" and d.Remove then
+            d:Remove()
+        end
+    end
+    ESPObjects[player] = nil
+end
+
+local function UpdatePlayerESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local obj = ESPObjects[player]
+        if not obj then continue end
+
+        local enabled = ESPConfig.PlayerEnabled
+        local char = GetCharacter(player)
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        local head = char and char:FindFirstChild("Head")
+
+        if not enabled or not hrp or not hum or hum.Health <= 0 then
+            for _, d in pairs(obj) do
+                if typeof(d) == "Instance" then
+                    if d:IsA("SelectionBox") then d.Adornee = nil end
+                elseif type(d) == "userdata" and d.Visible ~= nil then
+                    d.Visible = false
+                end
+            end
+            continue
+        end
+
+        local dist = Distance(hrp.Position)
+        if dist > ESPConfig.PlayerMaxDist then
+            for _, d in pairs(obj) do
+                if typeof(d) ~= "Instance" and type(d) == "userdata" and d.Visible ~= nil then
+                    d.Visible = false
+                end
+            end
+            continue
+        end
+
+        -- Highlight
+        if ESPConfig.PlayerHighlight then
+            obj.highlight.Adornee = char
+            obj.highlight.Color3 = ESPConfig.PlayerBoxColor
+            obj.highlight.SurfaceColor3 = ESPConfig.PlayerFillColor
+            obj.highlight.SurfaceTransparency = ESPConfig.PlayerFillTrans
+        else
+            obj.highlight.Adornee = nil
+        end
+
+        -- 2D Box
+        if ESPConfig.PlayerBox and head then
+            local rootScreen, rootZ, rootOn = WorldToViewport(hrp.Position)
+            if rootOn and rootZ > 0 then
+                local headScreen = WorldToViewport(head.Position + Vector3.new(0, 0.7, 0))
+                local scale = 1 / rootZ * 1000
+                local boxW = scale * 2.5
+                local boxH = (rootScreen.Y - headScreen.Y) * 1.15
+                local boxX = rootScreen.X - boxW / 2
+                local boxY = headScreen.Y - (boxH * 0.08)
+
+                -- outline
+                RoundedBox(obj.boxOutline, boxX - 1, boxY - 1, boxW + 2, boxH + 2, 3, Color3.new(0,0,0))
+                -- fill
+                if ESPConfig.PlayerBox then
+                    RoundedBox(obj.boxFill, boxX, boxY, boxW, boxH, 1, ESPConfig.PlayerFillColor, ESPConfig.PlayerFillTrans)
+                    RoundedBox(obj.box, boxX, boxY, boxW, boxH, 1.5, ESPConfig.PlayerBoxColor)
+                end
+
+                -- health bar
+                local hpRatio = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                local barH = boxH * hpRatio
+                local barX = boxX - 6
+                obj.healthBg.Visible   = true
+                obj.healthBg.Position  = Vector2.new(barX, boxY)
+                obj.healthBg.Size      = Vector2.new(4, boxH)
+                obj.healthBg.Color     = Color3.fromRGB(30, 30, 30)
+                obj.healthBar.Visible  = true
+                obj.healthBar.Position = Vector2.new(barX, boxY + boxH - barH)
+                obj.healthBar.Size     = Vector2.new(4, barH)
+                local g = hpRatio
+                obj.healthBar.Color = Color3.new(1 - g, g, 0)
+
+                -- name
+                obj.nameLabel.Visible  = ESPConfig.PlayerName
+                obj.nameLabel.Text     = player.DisplayName
+                obj.nameLabel.Color    = ESPConfig.PlayerNameColor
+                obj.nameLabel.Position = Vector2.new(rootScreen.X, boxY - 16)
+
+                -- distance
+                obj.distLabel.Visible  = ESPConfig.PlayerDistance
+                obj.distLabel.Text     = "[" .. dist .. "m]"
+                obj.distLabel.Color    = ESPConfig.PlayerDistColor
+                obj.distLabel.Position = Vector2.new(rootScreen.X, boxY + boxH + 2)
+            else
+                obj.box.Visible       = false
+                obj.boxFill.Visible   = false
+                obj.boxOutline.Visible = false
+                obj.nameLabel.Visible  = false
+                obj.distLabel.Visible  = false
+                obj.healthBar.Visible  = false
+                obj.healthBg.Visible   = false
+            end
+        else
+            obj.box.Visible        = false
+            obj.boxFill.Visible    = false
+            obj.boxOutline.Visible = false
+            obj.healthBar.Visible  = false
+            obj.healthBg.Visible   = false
+            -- still show name/dist without box
+            if head then
+                local screenPos, screenZ, onScreen = WorldToViewport(head.Position + Vector3.new(0, 0.7, 0))
+                obj.nameLabel.Visible  = ESPConfig.PlayerName and onScreen and screenZ > 0
+                obj.nameLabel.Text     = player.DisplayName
+                obj.nameLabel.Position = screenPos
+                obj.distLabel.Visible  = ESPConfig.PlayerDistance and onScreen and screenZ > 0
+                obj.distLabel.Text     = "[" .. dist .. "m]"
+                obj.distLabel.Position = screenPos + Vector2.new(0, 16)
+            end
+        end
+    end
+end
+
+-- init existing players
+for _, p in ipairs(Players:GetPlayers()) do
+    CreatePlayerESP(p)
+end
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function() task.wait(1); CreatePlayerESP(p) end)
+    CreatePlayerESP(p)
+end)
+Players.PlayerRemoving:Connect(RemovePlayerESP)
+
+-- ── ZOMBIE ESP ──
+local ZombieFolder = nil
+local function FindZombieFolder()
+    -- Zombies are typically in workspace under a folder
+    local ws = workspace
+    for _, v in ipairs(ws:GetDescendants()) do
+        if v:IsA("Folder") and (v.Name:lower():find("zombie") or v.Name == "Zombies" or v.Name == "NPC") then
+            return v
+        end
+    end
+    return ws
+end
+
+local function IsZombie(model)
+    if not model:IsA("Model") then return false end
+    local name = model.Name:lower()
+    return name:find("zombie") or name:find("infected") or name:find("walker") or name:find("runner") or name:find("crawler")
+end
+
+local function CreateZombieESP(zombie)
+    if ZombieESP[zombie] then return end
+    if not zombie:IsA("Model") then return end
+
+    local highlight = Instance.new("SelectionBox")
+    highlight.LineThickness = 0.05
+    highlight.Color3 = ESPConfig.ZombieColor
+    highlight.SurfaceColor3 = ESPConfig.ZombieFillColor
+    highlight.SurfaceTransparency = ESPConfig.ZombieFillTrans
+    highlight.Adornee = zombie
+    highlight.Parent = Camera
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 100, 0, 40)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Enabled = false
+    billboard.Parent = zombie:FindFirstChild("HumanoidRootPart") or zombie.PrimaryPart or zombie
+
+    local nameL = Instance.new("TextLabel")
+    nameL.Size = UDim2.new(1, 0, 0.5, 0)
+    nameL.BackgroundTransparency = 1
+    nameL.Text = zombie.Name
+    nameL.TextColor3 = ESPConfig.ZombieColor
+    nameL.TextScaled = true
+    nameL.Font = Enum.Font.GothamBold
+    nameL.Parent = billboard
+
+    local distL = Instance.new("TextLabel")
+    distL.Size = UDim2.new(1, 0, 0.5, 0)
+    distL.Position = UDim2.new(0, 0, 0.5, 0)
+    distL.BackgroundTransparency = 1
+    distL.Text = "0m"
+    distL.TextColor3 = Color3.fromRGB(255, 215, 0)
+    distL.TextScaled = true
+    distL.Font = Enum.Font.Gotham
+    distL.Parent = billboard
+
+    ZombieESP[zombie] = { highlight = highlight, billboard = billboard, nameL = nameL, distL = distL }
+end
+
+local function RemoveZombieESP(zombie)
+    local obj = ZombieESP[zombie]
+    if not obj then return end
+    obj.highlight:Destroy()
+    obj.billboard:Destroy()
+    ZombieESP[zombie] = nil
+end
+
+local function UpdateZombieESP()
+    if not ESPConfig.ZombieEnabled then
+        for zombie, obj in pairs(ZombieESP) do
+            obj.highlight.Adornee = nil
+            obj.billboard.Enabled = false
+        end
+        return
+    end
+    local myHRP = GetHRP(LocalPlayer)
+    for zombie, obj in pairs(ZombieESP) do
+        if not zombie or not zombie.Parent then
+            RemoveZombieESP(zombie)
+            continue
+        end
+        local hum = zombie:FindFirstChildOfClass("Humanoid")
+        local hrp = zombie:FindFirstChild("HumanoidRootPart") or zombie.PrimaryPart
+        if not hrp or (hum and hum.Health <= 0) then
+            obj.highlight.Adornee = nil
+            obj.billboard.Enabled = false
+            continue
+        end
+        local dist = myHRP and math.floor((myHRP.Position - hrp.Position).Magnitude) or 999
+        if dist > ESPConfig.ZombieMaxDist then
+            obj.highlight.Adornee = nil
+            obj.billboard.Enabled = false
+            continue
+        end
+        if ESPConfig.ZombieHighlight then
+            obj.highlight.Adornee = zombie
+            obj.highlight.Color3 = ESPConfig.ZombieColor
+            obj.highlight.SurfaceColor3 = ESPConfig.ZombieFillColor
+            obj.highlight.SurfaceTransparency = ESPConfig.ZombieFillTrans
+        else
+            obj.highlight.Adornee = nil
+        end
+        obj.billboard.Enabled = ESPConfig.ZombieName or ESPConfig.ZombieDistance
+        obj.nameL.Visible = ESPConfig.ZombieName
+        obj.distL.Visible = ESPConfig.ZombieDistance
+        obj.distL.Text = dist .. "m"
+    end
+end
+
+-- Scan workspace for zombies
+local function ScanZombies()
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if IsZombie(v) then CreateZombieESP(v) end
+    end
+end
+ScanZombies()
+workspace.DescendantAdded:Connect(function(v)
+    if IsZombie(v) then task.wait(0.1); CreateZombieESP(v) end
+end)
+workspace.DescendantRemoving:Connect(function(v)
+    if ZombieESP[v] then RemoveZombieESP(v) end
+end)
+
+-- ── LOOT ESP ──
+local LootCategories = {
+    weapons  = {"baseballbatmetal","baseballbatwood","crowbar","machete","kitchenknife","militaryknife","specialknife","metalpipe","hammer","M14","AK 47","Desert Eagle","Famas","G17","G36","M16","M1911","M4","M9 Pistol","Makarov","Mosin Nagant","Remington 700","Remington 870","Scar","UZI","WD39"},
+    medical  = {"bandage","bandagesdirty","firstaidkit","medkit","disinfectantspray","vitamins","repairkit"},
+    food     = {"cerealboxfood","energybarfood","fundrinkfood","kentuckybeans","tunafood","waterbottlefood","oilmetaltin"},
+    ammo     = {"pistolammobox","rifleammobox","shotgunammobox","sniperammobox"},
+    backpacks= {"Blue Duffle Bag","Brown Duffle Bag","Expedition Backpack","Field Backpack","Green Duffle Bag","Military Backpack","Military Duffle Bag","National Guard Backpack","Red Duffle Bag","Tactical Backpack","White Duffle Bag","Improvised Backpack Green","Improvised Backpack Military","Improvised Backpack Orange"},
+    keys     = {"Gun Store Keycard","Military Base Keycard","Louisville Police Station Keycard"},
+}
+
+local LootColors = {
+    weapons  = Color3.fromRGB(255, 80,  80),
+    medical  = Color3.fromRGB(80,  255, 120),
+    food     = Color3.fromRGB(255, 200, 50),
+    ammo     = Color3.fromRGB(255, 140, 0),
+    backpacks= Color3.fromRGB(100, 200, 255),
+    keys     = Color3.fromRGB(255, 255, 100),
+    other    = Color3.fromRGB(200, 200, 200),
+}
+
+local function GetLootCategory(name)
+    for cat, list in pairs(LootCategories) do
+        for _, item in ipairs(list) do
+            if item:lower() == name:lower() then return cat end
+        end
+    end
+    return "other"
+end
+
+local function ShouldShowLoot(name)
+    if ESPConfig.LootAll then return true end
+    local cat = GetLootCategory(name)
+    if cat == "weapons"   and ESPConfig.LootWeapons   then return true end
+    if cat == "medical"   and ESPConfig.LootMedical   then return true end
+    if cat == "food"      and ESPConfig.LootFood       then return true end
+    if cat == "ammo"      and ESPConfig.LootAmmo       then return true end
+    if cat == "backpacks" and ESPConfig.LootBackpacks  then return true end
+    if cat == "keys"      and ESPConfig.LootKeys       then return true end
+    return false
+end
+
+local function CreateLootESP(tool)
+    if LootESP[tool] then return end
+    if not tool:IsA("Tool") and not tool:IsA("Model") then return end
+    -- Only loot on the ground (not in a player's backpack)
+    if tool.Parent and tool.Parent:IsA("Model") and Players:GetPlayerFromCharacter(tool.Parent) then return end
+
+    local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
+    if not handle then return end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 120, 0, 28)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Enabled = false
+    billboard.Parent = handle
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = tool.Name
+    local cat = GetLootCategory(tool.Name)
+    label.TextColor3 = LootColors[cat] or LootColors.other
+    label.TextScaled = false
+    label.TextSize = ESPConfig.LootTextSize
+    label.Font = Enum.Font.GothamBold
+    label.TextStrokeTransparency = 0
+    label.TextStrokeColor3 = Color3.new(0,0,0)
+    label.Parent = billboard
+
+    local distLabel = Instance.new("TextLabel")
+    distLabel.Size = UDim2.new(1, 0, 0, 14)
+    distLabel.Position = UDim2.new(0, 0, 1, 0)
+    distLabel.BackgroundTransparency = 1
+    distLabel.Text = ""
+    distLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    distLabel.TextSize = 11
+    distLabel.Font = Enum.Font.Gotham
+    distLabel.TextStrokeTransparency = 0
+    distLabel.Parent = billboard
+
+    LootESP[tool] = { billboard = billboard, label = label, distLabel = distLabel, handle = handle }
+end
+
+local function RemoveLootESP(tool)
+    local obj = LootESP[tool]
+    if not obj then return end
+    obj.billboard:Destroy()
+    LootESP[tool] = nil
+end
+
+local function UpdateLootESP()
+    local myHRP = GetHRP(LocalPlayer)
+    for tool, obj in pairs(LootESP) do
+        if not tool or not tool.Parent then
+            RemoveLootESP(tool)
+            continue
+        end
+        -- hide if picked up by a player
+        if tool.Parent and Players:GetPlayerFromCharacter(tool.Parent) then
+            obj.billboard.Enabled = false
+            continue
+        end
+        if not ESPConfig.LootEnabled or not ShouldShowLoot(tool.Name) then
+            obj.billboard.Enabled = false
+            continue
+        end
+        local handle = obj.handle
+        if not handle or not handle.Parent then continue end
+        local dist = myHRP and math.floor((myHRP.Position - handle.Position).Magnitude) or 999
+        if dist > ESPConfig.LootMaxDist then
+            obj.billboard.Enabled = false
+            continue
+        end
+        obj.billboard.Enabled = true
+        obj.distLabel.Text = dist .. "m"
+        local cat = GetLootCategory(tool.Name)
+        obj.label.TextColor3 = LootColors[cat] or LootColors.other
+    end
+end
+
+-- Scan workspace for loot
+local function ScanLoot()
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if (v:IsA("Tool") or (v:IsA("Model") and v:FindFirstChild("Handle"))) then
+            CreateLootESP(v)
+        end
+    end
+end
+ScanLoot()
+workspace.DescendantAdded:Connect(function(v)
+    if v:IsA("Tool") or (v:IsA("Model") and v:FindFirstChild("Handle")) then
+        task.wait(0.1)
+        CreateLootESP(v)
+    end
+end)
+workspace.DescendantRemoving:Connect(function(v)
+    if LootESP[v] then RemoveLootESP(v) end
+end)
+
+-- ================================================================
+-- ██████╗ ██████╗     TABS — ESP
+-- ================================================================
+
+-- ── PLAYER ESP TAB ──
+TabESP:Section({ Title = "Player ESP" })
+
+TabESP:Toggle({
+    Title = "Enable Player ESP",
+    Default = false,
+    Callback = function(v)
+        ESPConfig.PlayerEnabled = v
+        if not v then
+            for player, obj in pairs(ESPObjects) do
+                obj.highlight.Adornee = nil
+                for _, d in pairs(obj) do
+                    if type(d) == "userdata" and d.Visible ~= nil then d.Visible = false end
+                end
+            end
+        end
+    end,
+})
+
+TabESP:Toggle({
+    Title = "Show Box",
+    Default = true,
+    Callback = function(v) ESPConfig.PlayerBox = v end,
+})
+
+TabESP:Toggle({
+    Title = "Show Name",
+    Default = true,
+    Callback = function(v) ESPConfig.PlayerName = v end,
+})
+
+TabESP:Toggle({
+    Title = "Show Distance",
+    Default = true,
+    Callback = function(v) ESPConfig.PlayerDistance = v end,
+})
+
+TabESP:Toggle({
+    Title = "Show Highlight",
+    Default = true,
+    Callback = function(v) ESPConfig.PlayerHighlight = v end,
+})
+
+TabESP:Slider({
+    Title = "Max Player Distance",
+    Min = 50, Max = 2000, Default = 500,
+    Callback = function(v) ESPConfig.PlayerMaxDist = v end,
+})
+
+TabESP:Slider({
+    Title = "Player Fill Transparency",
+    Min = 0, Max = 100, Default = 85, Percent = true,
+    Callback = function(v) ESPConfig.PlayerFillTrans = v / 100 end,
+})
+
+TabESP:Colorpicker({
+    Title = "Box Color",
+    Default = Color3.fromRGB(255, 50, 50),
+    Callback = function(v) ESPConfig.PlayerBoxColor = v end,
+})
+
+TabESP:Colorpicker({
+    Title = "Fill Color",
+    Default = Color3.fromRGB(255, 0, 0),
+    Callback = function(v) ESPConfig.PlayerFillColor = v end,
+})
+
+TabESP:Colorpicker({
+    Title = "Name Color",
+    Default = Color3.fromRGB(255, 255, 255),
+    Callback = function(v) ESPConfig.PlayerNameColor = v end,
+})
+
+TabESP:Colorpicker({
+    Title = "Distance Color",
+    Default = Color3.fromRGB(255, 215, 0),
+    Callback = function(v) ESPConfig.PlayerDistColor = v end,
+})
+
+-- ── ZOMBIE ESP ──
+TabESP:Section({ Title = "Zombie ESP" })
+
+TabESP:Toggle({
+    Title = "Enable Zombie ESP",
+    Default = false,
+    Callback = function(v) ESPConfig.ZombieEnabled = v end,
+})
+
+TabESP:Toggle({
+    Title = "Show Zombie Name",
+    Default = true,
+    Callback = function(v) ESPConfig.ZombieName = v end,
+})
+
+TabESP:Toggle({
+    Title = "Show Zombie Distance",
+    Default = true,
+    Callback = function(v) ESPConfig.ZombieDistance = v end,
+})
+
+TabESP:Toggle({
+    Title = "Zombie Highlight",
+    Default = true,
+    Callback = function(v) ESPConfig.ZombieHighlight = v end,
+})
+
+TabESP:Slider({
+    Title = "Max Zombie Distance",
+    Min = 50, Max = 1000, Default = 300,
+    Callback = function(v) ESPConfig.ZombieMaxDist = v end,
+})
+
+TabESP:Slider({
+    Title = "Zombie Fill Transparency",
+    Min = 0, Max = 100, Default = 85, Percent = true,
+    Callback = function(v) ESPConfig.ZombieFillTrans = v / 100 end,
+})
+
+TabESP:Colorpicker({
+    Title = "Zombie Outline Color",
+    Default = Color3.fromRGB(180, 0, 255),
+    Callback = function(v)
+        ESPConfig.ZombieColor = v
+        for _, obj in pairs(ZombieESP) do
+            obj.highlight.Color3 = v
+            obj.nameL.TextColor3 = v
+        end
+    end,
+})
+
+TabESP:Colorpicker({
+    Title = "Zombie Fill Color",
+    Default = Color3.fromRGB(100, 0, 200),
+    Callback = function(v) ESPConfig.ZombieFillColor = v end,
+})
+
+-- ── LOOT ESP ──
+TabESP:Section({ Title = "Loot ESP" })
+
+TabESP:Toggle({
+    Title = "Enable Loot ESP",
+    Default = false,
+    Callback = function(v)
+        ESPConfig.LootEnabled = v
+        if not v then
+            for _, obj in pairs(LootESP) do obj.billboard.Enabled = false end
+        end
+    end,
+})
+
+TabESP:Toggle({
+    Title = "Show All Loot",
+    Default = false,
+    Callback = function(v) ESPConfig.LootAll = v end,
+})
+
+TabESP:Slider({
+    Title = "Max Loot Distance",
+    Min = 20, Max = 500, Default = 100,
+    Callback = function(v) ESPConfig.LootMaxDist = v end,
+})
+
+TabESP:Slider({
+    Title = "Loot Text Size",
+    Min = 8, Max = 20, Default = 13,
+    Callback = function(v)
+        ESPConfig.LootTextSize = v
+        for _, obj in pairs(LootESP) do obj.label.TextSize = v end
+    end,
+})
+
+TabESP:Section({ Title = "Loot Filter" })
+
+TabESP:Toggle({ Title = "Weapons",   Default = true,  Callback = function(v) ESPConfig.LootWeapons   = v end })
+TabESP:Toggle({ Title = "Medical",   Default = true,  Callback = function(v) ESPConfig.LootMedical   = v end })
+TabESP:Toggle({ Title = "Food",      Default = true,  Callback = function(v) ESPConfig.LootFood      = v end })
+TabESP:Toggle({ Title = "Ammo",      Default = true,  Callback = function(v) ESPConfig.LootAmmo      = v end })
+TabESP:Toggle({ Title = "Backpacks", Default = true,  Callback = function(v) ESPConfig.LootBackpacks = v end })
+TabESP:Toggle({ Title = "Keycards",  Default = true,  Callback = function(v) ESPConfig.LootKeys      = v end })
+
+-- ================================================================
+-- ██████╗   AIMBOT TAB
+-- ================================================================
+
+local AimbotConfig = {
+    Enabled       = false,
+    TargetZombies = true,
+    TargetPlayers = false,
+    FOV           = 120,
+    Smoothness    = 0.1,
+    SilentAim     = false,
+    ShowFOVCircle = true,
+    FOVColor      = Color3.fromRGB(255, 255, 255),
+    HitPart       = "Head",
+    AutoFire      = false,
+    PredictMovement = false,
+    WallCheck     = true,
+}
+
+-- FOV circle drawing
+local FOVCircle = NewDrawing("Circle", {
+    Visible = false, Filled = false,
+    Thickness = 1.5, Color = AimbotConfig.FOVColor,
+    Transparency = 1, NumSides = 64,
+    Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2),
+    Radius = AimbotConfig.FOV,
+})
+
+local function UpdateFOVCircle()
+    FOVCircle.Visible = AimbotConfig.Enabled and AimbotConfig.ShowFOVCircle
+    FOVCircle.Radius  = AimbotConfig.FOV
+    FOVCircle.Color   = AimbotConfig.FOVColor
+    local vp = Camera.ViewportSize
+    FOVCircle.Position = Vector2.new(vp.X/2, vp.Y/2)
+end
+
+local function GetClosestTarget()
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    local closest, closestDist = nil, AimbotConfig.FOV
+
+    -- Check zombies
+    if AimbotConfig.TargetZombies then
+        for zombie, _ in pairs(ZombieESP) do
+            if not zombie or not zombie.Parent then continue end
+            local hum = zombie:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then continue end
+            local head = zombie:FindFirstChild("Head") or zombie:FindFirstChild("HumanoidRootPart")
+            if not head then continue end
+
+            -- wall check
+            if AimbotConfig.WallCheck then
+                local myHRP = GetHRP(LocalPlayer)
+                if myHRP then
+                    local ray = workspace:Raycast(myHRP.Position, head.Position - myHRP.Position,
+                        RaycastParams.new())
+                    if ray and not zombie:IsAncestorOf(ray.Instance) then continue end
+                end
+            end
+
+            local screenPos, screenZ, onScreen = WorldToViewport(head.Position)
+            if not onScreen or screenZ <= 0 then continue end
+            local d = (center - screenPos).Magnitude
+            if d < closestDist then
+                closest = head
+                closestDist = d
+            end
+        end
+    end
+
+    -- Check players
+    if AimbotConfig.TargetPlayers then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player == LocalPlayer then continue end
+            if not IsAlive(player) then continue end
+            local part = AimbotConfig.HitPart == "Head" and GetHead(player) or GetHRP(player)
+            if not part then continue end
+
+            if AimbotConfig.WallCheck then
+                local myHRP = GetHRP(LocalPlayer)
+                if myHRP then
+                    local ray = workspace:Raycast(myHRP.Position, part.Position - myHRP.Position, RaycastParams.new())
+                    if ray and not (player.Character and player.Character:IsAncestorOf(ray.Instance)) then continue end
+                end
+            end
+
+            local screenPos, screenZ, onScreen = WorldToViewport(part.Position)
+            if not onScreen or screenZ <= 0 then continue end
+            local d = (center - screenPos).Magnitude
+            if d < closestDist then
+                closest = part
+                closestDist = d
+            end
+        end
+    end
+
+    return closest
+end
+
+local function AimbotStep()
+    if not AimbotConfig.Enabled then AimbotTarget = nil return end
+    UpdateFOVCircle()
+    local target = GetClosestTarget()
+    AimbotTarget = target
+    if not target then return end
+
+    if AimbotConfig.SilentAim then
+        -- silent aim: handled in custom raycast hook (executor-level)
+        -- This is a placeholder for executors that support hookfunction
+    else
+        -- standard camera aim
+        local targetPos = target.Position
+        if AimbotConfig.PredictMovement and target.Velocity ~= nil then
+            local vel = target.Velocity
+            local dist = Distance(targetPos)
+            local travelTime = dist / 600 -- rough bullet speed
+            targetPos = targetPos + vel * travelTime
+        end
+        local lookAt = CFrame.lookAt(Camera.CFrame.Position, targetPos)
+        Camera.CFrame = Camera.CFrame:Lerp(lookAt, AimbotConfig.Smoothness)
+    end
+end
+
+-- Aimbot Tab UI
+TabAimbot:Section({ Title = "Aimbot Settings" })
+
+TabAimbot:Toggle({
+    Title = "Enable Aimbot",
+    Default = false,
+    Callback = function(v)
+        AimbotConfig.Enabled = v
+        UpdateFOVCircle()
+    end,
+})
+
+TabAimbot:Toggle({
+    Title = "Target Zombies",
+    Default = true,
+    Callback = function(v) AimbotConfig.TargetZombies = v end,
+})
+
+TabAimbot:Toggle({
+    Title = "Target Players",
+    Default = false,
+    Callback = function(v) AimbotConfig.TargetPlayers = v end,
+})
+
+TabAimbot:Toggle({
+    Title = "Silent Aim",
+    Default = false,
+    Callback = function(v) AimbotConfig.SilentAim = v end,
+})
+
+TabAimbot:Toggle({
+    Title = "Wall Check",
+    Default = true,
+    Callback = function(v) AimbotConfig.WallCheck = v end,
+})
+
+TabAimbot:Toggle({
+    Title = "Predict Movement",
+    Default = false,
+    Callback = function(v) AimbotConfig.PredictMovement = v end,
+})
+
+TabAimbot:Toggle({
+    Title = "Show FOV Circle",
+    Default = true,
+    Callback = function(v)
+        AimbotConfig.ShowFOVCircle = v
+        UpdateFOVCircle()
+    end,
+})
+
+TabAimbot:Dropdown({
+    Title = "Hit Part",
+    Options = { "Head", "HumanoidRootPart", "Torso" },
+    Default = "Head",
+    Callback = function(v) AimbotConfig.HitPart = v end,
+})
+
+TabAimbot:Slider({
+    Title = "FOV Size",
+    Min = 10, Max = 600, Default = 120,
+    Callback = function(v)
+        AimbotConfig.FOV = v
+        UpdateFOVCircle()
+    end,
+})
+
+TabAimbot:Slider({
+    Title = "Smoothness",
+    Min = 1, Max = 100, Default = 10,
+    Callback = function(v) AimbotConfig.Smoothness = v / 100 end,
+})
+
+TabAimbot:Colorpicker({
+    Title = "FOV Circle Color",
+    Default = Color3.fromRGB(255, 255, 255),
+    Callback = function(v)
+        AimbotConfig.FOVColor = v
+        FOVCircle.Color = v
+    end,
+})
+
+-- ================================================================
+-- ██████╗   PLAYER TAB
+-- ================================================================
+
+local PlayerConfig = {
+    WalkSpeed       = 16,
+    JumpPower       = 50,
+    Godmode         = false,
+    Noclip          = false,
+    InfStamina      = false,
+    InfHunger       = false,
+    InfThirst       = false,
+    InfHealth       = false,
+    AntiKnockback   = false,
+    NoFallDamage    = false,
+    InvisiblePlayer = false,
+}
+
+-- Speed / Jump
+TabPlayer:Section({ Title = "Movement" })
+
+TabPlayer:Slider({
+    Title = "Walk Speed",
+    Min = 4, Max = 200, Default = 16,
+    Callback = function(v)
+        PlayerConfig.WalkSpeed = v
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.WalkSpeed = v end
+        end
+    end,
+})
+
+TabPlayer:Slider({
+    Title = "Jump Power",
+    Min = 7, Max = 300, Default = 50,
+    Callback = function(v)
+        PlayerConfig.JumpPower = v
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.JumpPower = v end
+        end
+    end,
+})
+
+TabPlayer:Button({
+    Title = "Reset Speed & Jump",
+    Action = "Reset",
+    Callback = function()
+        PlayerConfig.WalkSpeed = 16
+        PlayerConfig.JumpPower = 50
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.WalkSpeed = 16; hum.JumpPower = 50 end
+        end
+        Library:Notify({ Title = "Reset", Content = "Speed & Jump reset to default.", Type = "Success" })
+    end,
+})
+
+-- Survival
+TabPlayer:Section({ Title = "Survival" })
+
+TabPlayer:Toggle({
+    Title = "Godmode (Max Health Loop)",
+    Default = false,
+    Callback = function(v)
+        PlayerConfig.Godmode = v
+        PlayerConfig.InfHealth = v
+    end,
+})
+
+TabPlayer:Toggle({
+    Title = "Infinite Stamina",
+    Default = false,
+    Callback = function(v) PlayerConfig.InfStamina = v end,
+})
+
+TabPlayer:Toggle({
+    Title = "Infinite Hunger",
+    Default = false,
+    Callback = function(v) PlayerConfig.InfHunger = v end,
+})
+
+TabPlayer:Toggle({
+    Title = "Infinite Thirst",
+    Default = false,
+    Callback = function(v) PlayerConfig.InfThirst = v end,
+})
+
+TabPlayer:Toggle({
+    Title = "No Fall Damage",
+    Default = false,
+    Callback = function(v) PlayerConfig.NoFallDamage = v end,
+})
+
+TabPlayer:Toggle({
+    Title = "Anti Knockback",
+    Default = false,
+    Callback = function(v) PlayerConfig.AntiKnockback = v end,
+})
+
+-- Noclip
+TabPlayer:Section({ Title = "Misc Player" })
+
+TabPlayer:Toggle({
+    Title = "Noclip",
+    Default = false,
+    Callback = function(v)
+        PlayerConfig.Noclip = v
+        Library:Notify({
+            Title = "Noclip",
+            Content = v and "Noclip enabled — walk through walls." or "Noclip disabled.",
+            Type = v and "Success" or "Warning",
+        })
+    end,
+})
+
+TabPlayer:Toggle({
+    Title = "Invisible Player",
+    Default = false,
+    Callback = function(v)
+        PlayerConfig.InvisiblePlayer = v
+        local char = LocalPlayer.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") or part:IsA("Decal") then
+                    part.LocalTransparencyModifier = v and 1 or 0
+                end
+            end
+        end
+    end,
+})
+
+TabPlayer:Button({
+    Title = "Teleport to Spawn",
+    Action = "Go",
+    Callback = function()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            -- Try to find a spawn location
+            local spawnLoc = workspace:FindFirstChildOfClass("SpawnLocation")
+            if spawnLoc then
+                hrp.CFrame = spawnLoc.CFrame + Vector3.new(0, 5, 0)
+                Library:Notify({ Title = "Teleport", Content = "Teleported to spawn.", Type = "Success" })
+            else
+                Library:Notify({ Title = "Teleport", Content = "No spawn found.", Type = "Error" })
+            end
+        end
+    end,
+})
+
+-- ── Survival loop ──
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+
+    if hum then
+        -- Godmode
+        if PlayerConfig.Godmode and hum.Health < hum.MaxHealth then
+            hum.Health = hum.MaxHealth
+        end
+        -- Speed/Jump persist across respawn
+        if hum.WalkSpeed ~= PlayerConfig.WalkSpeed then
+            hum.WalkSpeed = PlayerConfig.WalkSpeed
+        end
+        if hum.JumpPower ~= PlayerConfig.JumpPower then
+            hum.JumpPower = PlayerConfig.JumpPower
+        end
+        -- No fall damage
+        if PlayerConfig.NoFallDamage then
+            hum.WalkSpeed = math.max(hum.WalkSpeed, PlayerConfig.WalkSpeed)
+        end
+        -- Anti knockback
+        if PlayerConfig.AntiKnockback and hrp then
+            hrp.Velocity = Vector3.new(hrp.Velocity.X, hrp.Velocity.Y > 0 and hrp.Velocity.Y or 0, hrp.Velocity.Z)
+        end
+    end
+
+    -- Noclip
+    if PlayerConfig.Noclip and hrp then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+
+    -- Infinite Stamina / Hunger / Thirst via VitalsUI or playerData
+    -- Try StarterGui VitalsUI root values
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        local vitalsUI = playerGui:FindFirstChild("VitalsUI")
+        if vitalsUI then
+            local root = vitalsUI:FindFirstChild("Root")
+            if root then
+                -- Hunger
+                if PlayerConfig.InfHunger then
+                    local hungerVal = root:FindFirstChild("Hunger") or root:FindFirstChildWhichIsA("NumberValue")
+                    if hungerVal and hungerVal:IsA("NumberValue") then hungerVal.Value = hungerVal.MaxValue or 100 end
+                end
+            end
+        end
+    end
+
+    -- Try playerData in ReplicatedStorage
+    local rs = game:GetService("ReplicatedStorage")
+    local bytenetStorage = rs:FindFirstChild("BytenetStorage")
+    if bytenetStorage then
+        local playerData = bytenetStorage:FindFirstChild("playerData")
+        if playerData then
+            local myData = playerData:FindFirstChild(tostring(LocalPlayer.UserId))
+            if myData then
+                if PlayerConfig.InfStamina then
+                    local stam = myData:FindFirstChild("Stamina") or myData:FindFirstChild("stamina")
+                    if stam and stam:IsA("NumberValue") then stam.Value = 100 end
+                end
+                if PlayerConfig.InfHunger then
+                    local hung = myData:FindFirstChild("Hunger") or myData:FindFirstChild("hunger")
+                    if hung and hung:IsA("NumberValue") then hung.Value = 100 end
+                end
+                if PlayerConfig.InfThirst then
+                    local thirst = myData:FindFirstChild("Thirst") or myData:FindFirstChild("thirst")
+                    if thirst and thirst:IsA("NumberValue") then thirst.Value = 100 end
+                end
+            end
+        end
+    end
+end)
+
+-- ================================================================
+-- ██████╗   ITEMS TAB
+-- ================================================================
+
+TabItems:Section({ Title = "Auto Loot" })
+
+local AutoLootEnabled = false
+local AutoLootRange   = 15
+local AutoLootDelay   = 0.3
+
+TabItems:Toggle({
+    Title = "Auto Loot (Nearest Items)",
+    Default = false,
+    Callback = function(v)
+        AutoLootEnabled = v
+        Library:Notify({
+            Title = "Auto Loot",
+            Content = v and "Auto Loot enabled." or "Auto Loot disabled.",
+            Type = v and "Success" or "Warning",
+        })
+    end,
+})
+
+TabItems:Slider({
+    Title = "Loot Range",
+    Min = 5, Max = 100, Default = 15,
+    Callback = function(v) AutoLootRange = v end,
+})
+
+TabItems:Slider({
+    Title = "Loot Delay (ms)",
+    Min = 100, Max = 2000, Default = 300,
+    Callback = function(v) AutoLootDelay = v / 1000 end,
+})
+
+-- Spawn Item
+TabItems:Section({ Title = "Spawn Item (Tools Folder)" })
+
+local AllToolNames = {
+    -- Weapons
+    "baseballbatmetal","baseballbatwood","crowbar","machete","kitchenknife",
+    "militaryknife","specialknife","metalpipe","hammer","WD39","binoculars",
+    -- Medical
+    "bandage","bandagesdirty","firstaidkit","medkit","disinfectantspray",
+    "vitamins","repairkit","guncleaningkit","improvisedguncleaningkit",
+    -- Food
+    "cerealboxfood","energybarfood","fundrinkfood","kentuckybeans",
+    "tunafood","waterbottlefood","oilmetaltin","matchbox",
+    -- Ammo
+    "pistolammobox","rifleammobox","shotgunammobox","sniperammobox",
+    -- Tools
+    "flashlight","rope","ducttape","cloth","toothbrush",
+    -- Keys
+    "Gun Store Keycard","Military Base Keycard","Louisville Police Station Keycard",
+    -- Backpacks
+    "Blue Duffle Bag","Brown Duffle Bag","Expedition Backpack","Field Backpack",
+    "Green Duffle Bag","Military Backpack","Military Duffle Bag",
+    "National Guard Backpack","Red Duffle Bag","Tactical Backpack","White Duffle Bag",
+    "Improvised Backpack Green","Improvised Backpack Military","Improvised Backpack Orange",
+    -- Guns
+    "M14","MRE",
+    -- Tarp/Misc
+    "GreenTarp","OrangeTarp","Military Tarp",
+}
+
+local SelectedSpawnItem = AllToolNames[1]
+
+TabItems:Dropdown({
+    Title = "Select Item",
+    Options = AllToolNames,
+    Default = AllToolNames[1],
+    Search = true,
+    Callback = function(v) SelectedSpawnItem = v end,
+})
+
+TabItems:Button({
+    Title = "Spawn Selected Item",
+    Action = "Spawn",
+    Callback = function()
+        local char = LocalPlayer.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then
+            Library:Notify({ Title = "Spawn", Content = "Character not found.", Type = "Error" })
+            return
+        end
+        -- Try to find the tool in ReplicatedStorage Tools folder
+        local rs = game:GetService("ReplicatedStorage")
+        local toolsFolder = rs:FindFirstChild("Tools") or rs:FindFirstChild("tools")
+        local toolTemplate = toolsFolder and toolsFolder:FindFirstChild(SelectedSpawnItem)
+        if toolTemplate then
+            local clone = toolTemplate:Clone()
+            clone.Parent = LocalPlayer.Backpack
+            Library:Notify({ Title = "Spawned", Content = SelectedSpawnItem .. " added to backpack.", Type = "Success" })
+        else
+            -- Try workspace objects folder as fallback
+            local obj = workspace:FindFirstChild("objects")
+            local template = obj and obj:FindFirstChild(SelectedSpawnItem)
+            if template then
+                local clone = template:Clone()
+                clone.Parent = LocalPlayer.Backpack
+                Library:Notify({ Title = "Spawned", Content = SelectedSpawnItem, Type = "Success" })
+            else
+                Library:Notify({
+                    Title = "Spawn Failed",
+                    Content = SelectedSpawnItem .. " not found in storage.\nTry Teleport to Item instead.",
+                    Type = "Error",
+                })
+            end
+        end
+    end,
+})
+
+-- Teleport to item
+TabItems:Section({ Title = "Teleport to Loot" })
+
+TabItems:Button({
+    Title = "Teleport to Nearest Weapon",
+    Action = "Go",
+    Callback = function()
+        local hrp = GetHRP(LocalPlayer)
+        if not hrp then return end
+        local best, bestDist = nil, math.huge
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("Tool") or (v:IsA("Model") and v:FindFirstChild("Handle")) then
+                if GetLootCategory(v.Name) == "weapons" then
+                    local handle = v:FindFirstChild("Handle") or v:FindFirstChildWhichIsA("BasePart")
+                    if handle then
+                        local d = (hrp.Position - handle.Position).Magnitude
+                        if d < bestDist then best = handle; bestDist = d end
+                    end
+                end
+            end
+        end
+        if best then
+            hrp.CFrame = CFrame.new(best.Position + Vector3.new(0, 3, 0))
+            Library:Notify({ Title = "Teleport", Content = "Teleported to nearest weapon.", Type = "Success" })
+        else
+            Library:Notify({ Title = "Not Found", Content = "No weapon found nearby.", Type = "Error" })
+        end
+    end,
+})
+
+TabItems:Button({
+    Title = "Teleport to Nearest Keycard",
+    Action = "Go",
+    Callback = function()
+        local hrp = GetHRP(LocalPlayer)
+        if not hrp then return end
+        local best, bestDist = nil, math.huge
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("Tool") or (v:IsA("Model") and v:FindFirstChild("Handle")) then
+                if GetLootCategory(v.Name) == "keys" then
+                    local handle = v:FindFirstChild("Handle") or v:FindFirstChildWhichIsA("BasePart")
+                    if handle then
+                        local d = (hrp.Position - handle.Position).Magnitude
+                        if d < bestDist then best = handle; bestDist = d end
+                    end
+                end
+            end
+        end
+        if best then
+            hrp.CFrame = CFrame.new(best.Position + Vector3.new(0, 3, 0))
+            Library:Notify({ Title = "Teleport", Content = "Teleported to keycard.", Type = "Success" })
+        else
+            Library:Notify({ Title = "Not Found", Content = "No keycard found nearby.", Type = "Error" })
+        end
+    end,
+})
+
+TabItems:Button({
+    Title = "Teleport to Nearest Medical",
+    Action = "Go",
+    Callback = function()
+        local hrp = GetHRP(LocalPlayer)
+        if not hrp then return end
+        local best, bestDist = nil, math.huge
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("Tool") or (v:IsA("Model") and v:FindFirstChild("Handle")) then
+                if GetLootCategory(v.Name) == "medical" then
+                    local handle = v:FindFirstChild("Handle") or v:FindFirstChildWhichIsA("BasePart")
+                    if handle then
+                        local d = (hrp.Position - handle.Position).Magnitude
+                        if d < bestDist then best = handle; bestDist = d end
+                    end
+                end
+            end
+        end
+        if best then
+            hrp.CFrame = CFrame.new(best.Position + Vector3.new(0, 3, 0))
+            Library:Notify({ Title = "Teleport", Content = "Teleported to medical item.", Type = "Success" })
+        else
+            Library:Notify({ Title = "Not Found", Content = "No medical item found.", Type = "Error" })
+        end
+    end,
+})
+
+-- Auto loot loop
+task.spawn(function()
+    while true do
+        task.wait(AutoLootDelay)
+        if not AutoLootEnabled then continue end
+        local char = LocalPlayer.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if (v:IsA("Tool") or (v:IsA("Model") and v:FindFirstChild("Handle"))) then
+                local handle = v:FindFirstChild("Handle") or v:FindFirstChildWhichIsA("BasePart")
+                if handle then
+                    local d = (hrp.Position - handle.Position).Magnitude
+                    if d <= AutoLootRange then
+                        -- Teleport to it briefly to trigger pickup proximity
+                        local origCF = hrp.CFrame
+                        hrp.CFrame = CFrame.new(handle.Position + Vector3.new(0, 2, 0))
+                        task.wait(0.05)
+                        hrp.CFrame = origCF
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ================================================================
+-- ██████╗   WORLD TAB
+-- ================================================================
+
+TabWorld:Section({ Title = "Zombie Control" })
+
+TabWorld:Button({
+    Title = "Kill All Zombies",
+    Action = "Kill",
+    Callback = function()
+        local count = 0
+        for zombie, _ in pairs(ZombieESP) do
+            if zombie and zombie.Parent then
+                local hum = zombie:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    hum.Health = 0
+                    count += 1
+                end
+            end
+        end
+        Library:Notify({
+            Title = "Kill Zombies",
+            Content = "Killed " .. count .. " zombies.",
+            Type = "Success",
+        })
+    end,
+})
+
+TabWorld:Button({
+    Title = "Kill Nearest Zombie",
+    Action = "Kill",
+    Callback = function()
+        local hrp = GetHRP(LocalPlayer)
+        if not hrp then return end
+        local best, bestDist = nil, math.huge
+        for zombie, _ in pairs(ZombieESP) do
+            if zombie and zombie.Parent then
+                local zhrp = zombie:FindFirstChild("HumanoidRootPart") or zombie.PrimaryPart
+                if zhrp then
+                    local d = (hrp.Position - zhrp.Position).Magnitude
+                    if d < bestDist then best = zombie; bestDist = d end
+                end
+            end
+        end
+        if best then
+            local hum = best:FindFirstChildOfClass("Humanoid")
+            if hum then hum.Health = 0 end
+            Library:Notify({ Title = "Killed", Content = "Nearest zombie killed.", Type = "Success" })
+        end
+    end,
+})
+
+TabWorld:Slider({
+    Title = "Kill Zombies In Radius",
+    Min = 10, Max = 500, Default = 50,
+    Callback = function(v)
+        -- stored for the button below
+        Library.Flags["ZombieKillRadius"] = { GetValue = function() return v end }
+    end,
+})
+
+TabWorld:Button({
+    Title = "Kill Zombies In Radius",
+    Action = "Kill",
+    Callback = function()
+        local hrp = GetHRP(LocalPlayer)
+        if not hrp then return end
+        local radius = Library:GetFlag("ZombieKillRadius") or 50
+        local count = 0
+        for zombie, _ in pairs(ZombieESP) do
+            if zombie and zombie.Parent then
+                local zhrp = zombie:FindFirstChild("HumanoidRootPart") or zombie.PrimaryPart
+                if zhrp then
+                    local d = (hrp.Position - zhrp.Position).Magnitude
+                    if d <= radius then
+                        local hum = zombie:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health > 0 then hum.Health = 0; count += 1 end
+                    end
+                end
+            end
+        end
+        Library:Notify({ Title = "Kill Radius", Content = "Killed " .. count .. " zombies.", Type = "Success" })
+    end,
+})
+
+-- Teleport
+TabWorld:Section({ Title = "Teleport" })
+
+local TeleportTargetPlayer = ""
+
+TabWorld:Dropdown({
+    Title = "Teleport to Player",
+    Options = (function()
+        local names = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then table.insert(names, p.Name) end
+        end
+        return names
+    end)(),
+    Default = "",
+    Search = true,
+    Callback = function(v) TeleportTargetPlayer = v end,
+})
+
+TabWorld:Button({
+    Title = "Teleport to Selected Player",
+    Action = "Go",
+    Callback = function()
+        local target = Players:FindFirstChild(TeleportTargetPlayer)
+        local tHRP = target and GetHRP(target)
+        local myHRP = GetHRP(LocalPlayer)
+        if tHRP and myHRP then
+            myHRP.CFrame = tHRP.CFrame + Vector3.new(2, 0, 2)
+            Library:Notify({ Title = "Teleport", Content = "Teleported to " .. TeleportTargetPlayer, Type = "Success" })
+        else
+            Library:Notify({ Title = "Failed", Content = "Player not found.", Type = "Error" })
+        end
+    end,
+})
+
+TabWorld:Button({
+    Title = "Teleport to Nearest Zombie",
+    Action = "Go",
+    Callback = function()
+        local hrp = GetHRP(LocalPlayer)
+        if not hrp then return end
+        local best, bestDist = nil, math.huge
+        for zombie, _ in pairs(ZombieESP) do
+            if zombie and zombie.Parent then
+                local zhrp = zombie:FindFirstChild("HumanoidRootPart") or zombie.PrimaryPart
+                if zhrp then
+                    local d = (hrp.Position - zhrp.Position).Magnitude
+                    if d < bestDist then best = zhrp; bestDist = d end
+                end
+            end
+        end
+        if best then
+            hrp.CFrame = best.CFrame + Vector3.new(3, 0, 0)
+            Library:Notify({ Title = "Teleport", Content = "Teleported near zombie.", Type = "Success" })
+        else
+            Library:Notify({ Title = "Not Found", Content = "No zombies found.", Type = "Error" })
+        end
+    end,
+})
+
+-- Prefab Spawner
+TabWorld:Section({ Title = "Prefab Spawner" })
+
+local PrefabNames = {
+    "shelf","shelf_2","shelf_long","shelf_brown","shelf_green","shelf_white",
+    "shelf_kitchen","metal_shelf","metal_shelf2","gun_locker","gun_locker_GunStore",
+    "gun_locker_PoliceStore","locker_police","ammo_box","crate_alpha",
+    "gun_crate_Military","gun_crate_alpha","medical_box","refrigerator",
+    "couch","couch_seat","desk","office_chair","bed_shelf","single bed",
+    "blackboard","school_chair","school_table","prison_bars","prison_bed","prison_door",
+    "trash_bin","trash_can_indoor","stove","microwave","washing_machine",
+    "water_dispenser","wardrobe","metal_wardrobe","mirror","clock","TV","PC",
+    "bar_counter","bar_counter_corner","bar_chair","cash_register",
+    "clothing_rack","pegboard_wall","whiteboard","tool_cart","ice_box",
+    "cafeteria_table","cafeteria_giveaway","hotel_sofa","hotel_counter","hotel_carpet",
+}
+
+local SelectedPrefab = PrefabNames[1]
+
+TabWorld:Dropdown({
+    Title = "Select Prefab",
+    Options = PrefabNames,
+    Default = PrefabNames[1],
+    Search = true,
+    Callback = function(v) SelectedPrefab = v end,
+})
+
+TabWorld:Button({
+    Title = "Spawn Prefab at Position",
+    Action = "Spawn",
+    Callback = function()
+        local hrp = GetHRP(LocalPlayer)
+        if not hrp then return end
+        local rs = game:GetService("ReplicatedStorage")
+        local prefabsFolder = rs:FindFirstChild("Prefabs")
+        if not prefabsFolder then
+            Library:Notify({ Title = "Error", Content = "Prefabs folder not found.", Type = "Error" })
+            return
+        end
+        local prefab = prefabsFolder:FindFirstChild(SelectedPrefab)
+        if not prefab then
+            Library:Notify({ Title = "Not Found", Content = SelectedPrefab .. " not in Prefabs.", Type = "Error" })
+            return
+        end
+        local clone = prefab:Clone()
+        local spawnCF = hrp.CFrame * CFrame.new(0, 0, -6)
+        if clone.PrimaryPart then
+            clone:SetPrimaryPartCFrame(spawnCF)
+        elseif clone:FindFirstChildWhichIsA("BasePart") then
+            clone:FindFirstChildWhichIsA("BasePart").CFrame = spawnCF
+        end
+        clone.Parent = workspace
+        Library:Notify({ Title = "Spawned", Content = SelectedPrefab .. " spawned.", Type = "Success" })
+    end,
+})
+
+-- ================================================================
+-- ██████╗   MISC TAB
+-- ================================================================
+
+TabMisc:Section({ Title = "Game" })
+
+TabMisc:Toggle({
+    Title = "Anti AFK",
+    Default = false,
+    Callback = function(v)
+        if v then
+            local VirtualUser = game:GetService("VirtualUser")
+            task.spawn(function()
+                while Library.Flags["AntiAFK"] and Library.Flags["AntiAFK"]:GetValue and Library.Flags["AntiAFK"]:GetValue() do
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new())
+                    task.wait(20)
+                end
+            end)
+        end
+    end,
+})
+
+TabMisc:Toggle({
+    Title = "Disable Jump Cooldown",
+    Default = false,
+    Callback = function(v)
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                -- Some games use StateChanged to enforce cooldown
+                -- Setting JumpCooldown property if available
+                pcall(function() hum.JumpCooldown = v and 0 or 1 end)
+            end
+        end
+    end,
+})
+
+TabMisc:Section({ Title = "Visual" })
+
+TabMisc:Toggle({
+    Title = "Fullbright",
+    Default = false,
+    Callback = function(v)
+        local lighting = game:GetService("Lighting")
+        if v then
+            lighting.Brightness = 2
+            lighting.ClockTime  = 14
+            lighting.FogEnd     = 100000
+            lighting.GlobalShadows = false
+            for _, fx in ipairs(lighting:GetChildren()) do
+                if fx:IsA("BlurEffect") or fx:IsA("ColorCorrectionEffect") or fx:IsA("SunRaysEffect") then
+                    fx.Enabled = false
+                end
+            end
+        else
+            lighting.Brightness    = 1
+            lighting.ClockTime     = 14
+            lighting.FogEnd        = 100000
+            lighting.GlobalShadows = true
+        end
+    end,
+})
+
+TabMisc:Toggle({
+    Title = "No Fog",
+    Default = false,
+    Callback = function(v)
+        game:GetService("Lighting").FogEnd = v and 100000 or 1000
+    end,
+})
+
+TabMisc:Slider({
+    Title = "Field Of View",
+    Min = 50, Max = 120, Default = 70,
+    Callback = function(v)
+        Camera.FieldOfView = v
+    end,
+})
+
+TabMisc:Toggle({
+    Title = "Third Person Camera",
+    Default = false,
+    Callback = function(v)
+        LocalPlayer.CameraMode = v and Enum.CameraMode.Classic or Enum.CameraMode.LockFirstPerson
+    end,
+})
+
+TabMisc:Section({ Title = "Script Info" })
+
+TabMisc:Button({
+    Title = "Copy Discord",
+    Action = "Copy",
+    Callback = function()
+        setclipboard("discord.gg/phantomprotocol")
+        Library:Notify({ Title = "Copied!", Content = "Discord link copied to clipboard.", Type = "Success" })
+    end,
+})
+
+TabMisc:Button({
+    Title = "Unload Script",
+    Action = "Unload",
+    Callback = function()
+        Library:Notify({ Title = "Unloading", Content = "Phantom Protocol X unloaded.", Type = "Warning", Duration = 2 })
+        task.wait(2)
+        FOVCircle:Remove()
+        for _, p in ipairs(Players:GetPlayers()) do RemovePlayerESP(p) end
+        for zombie, _ in pairs(ZombieESP) do RemoveZombieESP(zombie) end
+        for tool, _ in pairs(LootESP) do RemoveLootESP(tool) end
+        if Library.Unload then Library:Unload() end
+    end,
+})
+
+-- ================================================================
+-- MAIN RENDER LOOP
+-- ================================================================
+RunService.RenderStepped:Connect(function()
+    -- Player ESP
+    UpdatePlayerESP()
+    -- Zombie ESP
+    UpdateZombieESP()
+    -- Loot ESP
+    UpdateLootESP()
+    -- Aimbot
+    AimbotStep()
+    -- FOV circle center follow viewport
+    local vp = Camera.ViewportSize
+    FOVCircle.Position = Vector2.new(vp.X / 2, vp.Y / 2)
+end)
+
+-- Keep speed/jump on respawn
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(1)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.WalkSpeed = PlayerConfig.WalkSpeed
+        hum.JumpPower = PlayerConfig.JumpPower
+    end
+    -- Re-init ESP for all players
+    for _, p in ipairs(Players:GetPlayers()) do
+        RemovePlayerESP(p)
+        task.wait(0.1)
+        CreatePlayerESP(p)
+    end
+end)
+
+-- Notify loaded
+Library:Notify({
+    Title   = "Phantom Protocol X",
+    Content = "Loaded for Infected Land! Stay safe out there. 🧟",
+    Type    = "Success",
+    Duration = 5,
+})
